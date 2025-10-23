@@ -6,14 +6,14 @@ default_config: llama-2-7b
 
 # GPU config
 gpu_config:
-  cuda_visible_devices: "0,1"
+  cuda_visible_devices: "7"
 
 # model config list
 # Add new models here
 models:
   # Llama-2-7b vanilla mode
   llama-2-7b:
-    model_name_or_path: "/tos-bjml-ai4chem/fuyuchen/llm_weights/Llama-2-7b-hf"
+    model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
     use_which_plan: vanilla
     output_layer: -1
     tp_starting_index: 0  # not used in vanilla mode
@@ -27,9 +27,13 @@ models:
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
+      target_phrase: "means in one word:"
+      analysis_samples: 3
+      analysis_dir: "attention_analysis"
+      analysis_dir: "attention_analysis"
 
   llama-2-7b-attention:
-    model_name_or_path: "/tos-bjml-ai4chem/fuyuchen/llm_weights/Llama-2-7b-hf"
+    model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
     use_which_plan: vanilla
     output_layer: -1
     tp_starting_index: 0  # not used in vanilla mode
@@ -39,10 +43,15 @@ models:
     task_set: sts
     prompt_method: prompteol
     attention_enhance:
-      enabled: false
+      enabled: true
       score_file: "./head_score/llama-2-7b-80k.json"
-      top_k: 10
-      gamma: 1.2
+      top_k: 30
+      gamma: 4
+      target_phrase: "means in one word"
+      analysis_samples: 3
+      analysis_dir: "attention_analysis"
+      average_last_token_attention: true
+      average_last_token_start_layer: 20
 
   # Llama-2-7b TP mode
   llama-2-7b-tp:
@@ -60,6 +69,9 @@ models:
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
+      target_phrase: "means in one word:"
+      analysis_samples: 3
+      analysis_dir: "attention_analysis"
 
   llama-2-13b:
     model_name_or_path: "/tos-bjml-ai4chem/fuyuchen/llm_weights/Llama-2-7b-hf"
@@ -76,6 +88,9 @@ models:
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
+      target_phrase: "means in one word:"
+      analysis_samples: 3
+      analysis_dir: "attention_analysis"
 
   llama-2-13b-tp:
     model_name_or_path: "/tos-bjml-ai4chem/fuyuchen/llm_weights/Llama-2-7b-hf"
@@ -92,6 +107,8 @@ models:
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
+      target_phrase: "means in one word:"
+      analysis_samples: 3
 
   llama-3-8b:
     model_name_or_path: "/tos-bjml-ai4chem/fuyuchen/llm_weights/Llama-2-7b-hf"

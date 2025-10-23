@@ -10,7 +10,7 @@ DEFAULT_SCORE_FILE = Path("./head_score/llama-2-7b-80k.json")
 
 def get_top_attention_head_positions(
     score_file: Union[str, Path] = DEFAULT_SCORE_FILE,
-    k: int = 10,
+    k: int = 20,
 ) -> List[Tuple[int, ...]]:
     """Return the positions of the top-k attention heads ordered by score."""
     score_path = Path(score_file)
@@ -22,6 +22,7 @@ def get_top_attention_head_positions(
         for key, scores in head_scores.items()
     ]
     averaged_scores.sort(key=lambda item: item[1], reverse=True)
+    print(averaged_scores[:k])
     return [position for position, _ in averaged_scores[:k]]
 
 
