@@ -24,6 +24,8 @@ models:
     prompt_method: prompteol
     attention_enhance:
       enabled: false
+      enable_attention_override: true
+      head_order: score
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
@@ -35,7 +37,7 @@ models:
   llama-2-7b-attention:
     model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
     use_which_plan: vanilla
-    output_layer: -1
+    output_layer: 27
     tp_starting_index: 0  # not used in vanilla mode
     tp_exiting_index: 0   # not used in vanilla mode
     batch_size: 16
@@ -44,14 +46,39 @@ models:
     prompt_method: prompteol
     attention_enhance:
       enabled: true
+      enable_attention_override: true
+      head_order: score
       score_file: "./head_score/llama-2-7b-80k.json"
-      top_k: 30
-      gamma: 4
-      target_phrase: "means in one word"
+      top_k: 25
+      gamma: 10
+      target_phrase: "means in one word:\""
       analysis_samples: 3
       analysis_dir: "attention_analysis"
-      average_last_token_attention: true
-      average_last_token_start_layer: 20
+      average_last_token_attention: false
+      average_last_token_start_layer: 29
+
+  llama-2-7b-tp-attention:
+    model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
+    use_which_plan: tp
+    output_layer: 27
+    tp_starting_index: 1  # not used in vanilla mode
+    tp_exiting_index: 7   # not used in vanilla mode
+    batch_size: 16
+    mode: dev
+    task_set: sts
+    prompt_method: prompteol
+    attention_enhance:
+      enabled: true
+      enable_attention_override: true
+      head_order: score
+      score_file: "./head_score/llama-2-7b-80k.json"
+      top_k: 25
+      gamma: 10
+      target_phrase: "means in one word:\""
+      analysis_samples: 3
+      analysis_dir: "attention_analysis"
+      average_last_token_attention: false
+      average_last_token_start_layer: 29
 
   # Llama-2-7b TP mode
   llama-2-7b-tp:
@@ -66,6 +93,8 @@ models:
     prompt_method: prompteol
     attention_enhance:
       enabled: false
+      enable_attention_override: true
+      head_order: score
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
@@ -85,6 +114,8 @@ models:
     prompt_method: cot
     attention_enhance:
       enabled: false
+      enable_attention_override: true
+      head_order: score
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2
@@ -104,6 +135,8 @@ models:
     prompt_method: cot
     attention_enhance:
       enabled: false
+      enable_attention_override: true
+      head_order: score
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 10
       gamma: 1.2

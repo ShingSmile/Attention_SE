@@ -8,6 +8,7 @@ import tqdm
 import fcntl
 import time
 import argparse
+import csv
 from collections import defaultdict
 from collections.abc import Mapping
 from typing import Dict, List, Optional, Tuple
@@ -37,6 +38,8 @@ COEFF = float(os.environ.get("COEFF", 1.0))
 
 # Set up logger
 logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.DEBUG)
+logging.getLogger("matplotlib").setLevel(logging.INFO)
+logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
 
 # Set PATHs
 PATH_TO_SENTEVAL = './SentEval'
@@ -112,7 +115,7 @@ def main():
                         help="config file path")
     
 
-    parser.add_argument("--tokenizer_name", type=str, 
+    parser.add_argument("--tokenizer_name", type=str,
                         default='')
     parser.add_argument("--model_name_or_path", type=str,
                         help="Transformers' model name or path")
@@ -223,6 +226,23 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     tokenizer.pad_token_id = 0  # Set the padding token. we want this to be different from the eos token
     tokenizer.padding_side = "left"  # Allow batched inference
+    special_token_ids = set(tokenizer.all_special_ids or [])
+
+    for attr in ["pad_token_id", "bos_token_id", "eos_token_id", "unk_token_id"]:
+        value = getattr(tokenizer, attr, None)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                if item is not None:
+                    special_token_ids.add(int(item))
+        else:
+            special_token_ids.add(int(value))
+    if args.attention_enhance:
+        args.attention_enhance["special_token_ids"] = sorted(int(tid) for tid in special_token_ids)
+    #     保留特殊 token
+        args.attention_enhance["special_token_ids"] = []
+
 
     if args.use_which_plan == 'tp':
         placeholder_token = '<PST>'
@@ -290,6 +310,9 @@ def main():
         else:
             args.attention_enhance.pop("target_token_ids", None)
             logging.warning("[attention_enhance] token 序列为空，将退化为放大最后 token。")
+
+        args.attention_enhance.setdefault("enable_attention_override", True)
+        args.attention_enhance.setdefault("head_order", "score")
 
     if (not args.tensor_parallel) and 'llama' in model_name_lower:
         model.model.configure_attention_enhance(args.attention_enhance)
@@ -529,18 +552,23 @@ def main():
                     for start, end in match_spans:
                         text_token_indices.extend(range(start, end))
                 text_token_indices = sorted(set(text_token_indices))
-                if not text_token_indices:
-                    if should_visualize:
-                        logging.warning(
-                            "[attention_analysis][sample %s] 未找到输入文本对应的 token，跳过可视化。",
-                            sample_idx,
-                        )
-                    continue
+                # if not text_token_indices:
+                #     if should_visualize:
+                #         logging.warning(
+                #             "[attention_analysis][sample %s] 未找到输入文本对应的 token，跳过可视化。",
+                #             sample_idx,
+                #         )
+                #     continue
 
+                # valid_indices = [
+                #     idx
+                #     for idx in text_token_indices
+                #     if idx < len(token_ids) and token_ids[idx] not in special_token_ids
+                # ]
                 valid_indices = [
                     idx
-                    for idx in text_token_indices
-                    if idx < len(token_ids) and token_ids[idx] not in special_token_ids
+                    for idx, tid in enumerate(token_ids)
+                    if tid not in special_token_ids
                 ]
                 if not valid_indices:
                     if should_visualize:
@@ -548,7 +576,7 @@ def main():
                             "[attention_analysis][sample %s] 输入文本 tokens 全为特殊符号，跳过可视化。",
                             sample_idx,
                         )
-                    continue
+                        continue
 
                 def tidy_label(text: str) -> str:
                     text = text.replace("\n", " ").strip()
@@ -562,6 +590,13 @@ def main():
                     )
                     for idx in valid_indices
                 }
+                all_indices = list(range(len(token_ids)))
+                full_index_to_label_list = [
+                    tidy_label(
+                        decode_token(token_ids[idx]) if idx < len(token_ids) else f"<idx {idx}>"
+                    )
+                    for idx in all_indices
+                ]
 
                 head_pairs = set()
                 for rec in sample_records:
@@ -687,6 +722,8 @@ def main():
                                 valid_indices = list(range(seq_len))
                         heatmap_rows = []
                         heatmap_labels = []
+                        csv_heatmap_rows = []
+                        csv_heatmap_labels = []
                         for layer in unique_layers:
                             layer_records = [rec for rec in sample_records if rec.get("layer") == layer]
                             if not layer_records:
@@ -697,34 +734,71 @@ def main():
                                 query_scores_array = np.array(query_scores_list, dtype=float)
                                 for q_idx, scores_arr in enumerate(query_scores_array):
                                     subset_scores = np.zeros(len(valid_indices), dtype=float)
+                                    csv_scores = np.zeros(len(all_indices), dtype=float)
                                     for pos, token_index in enumerate(valid_indices):
                                         if token_index < scores_arr.shape[0]:
                                             subset_scores[pos] = scores_arr[token_index]
+                                    for token_index in all_indices:
+                                        if token_index < scores_arr.shape[0]:
+                                            csv_scores[token_index] = scores_arr[token_index]
                                     heatmap_rows.append(subset_scores)
+                                    csv_heatmap_rows.append(csv_scores)
                                     label = f"L{layer}-{query_labels[q_idx] if q_idx < len(query_labels) else f'Q{q_idx}'}"
                                     heatmap_labels.append(label)
+                                    csv_heatmap_labels.append(label)
                                 total_scores = query_scores_array.sum(axis=0)
                                 num_queries_layer = max(1, query_scores_array.shape[0])
                                 total_scores = total_scores / num_queries_layer
                                 subset_scores = np.zeros(len(valid_indices), dtype=float)
+                                csv_scores = np.zeros(len(all_indices), dtype=float)
                                 for pos, token_index in enumerate(valid_indices):
                                     if token_index < total_scores.shape[0]:
                                         subset_scores[pos] = total_scores[token_index]
+                                for token_index in all_indices:
+                                    if token_index < total_scores.shape[0]:
+                                        csv_scores[token_index] = total_scores[token_index]
                                 heatmap_rows.append(subset_scores)
                                 heatmap_labels.append(f"L{layer}-mean")
+                                csv_heatmap_rows.append(csv_scores)
+                                csv_heatmap_labels.append(f"L{layer}-mean")
                             else:
                                 scores = record.get("full_scores", [])
                                 if scores:
                                     scores_arr = np.array(scores, dtype=float)
                                     subset_scores = np.zeros(len(valid_indices), dtype=float)
+                                    csv_scores = np.zeros(len(all_indices), dtype=float)
                                     for pos, token_index in enumerate(valid_indices):
                                         if token_index < scores_arr.shape[0]:
                                             subset_scores[pos] = scores_arr[token_index]
+                                    for token_index in all_indices:
+                                        if token_index < scores_arr.shape[0]:
+                                            csv_scores[token_index] = scores_arr[token_index]
                                     heatmap_rows.append(subset_scores)
                                     heatmap_labels.append(f"L{layer}")
+                                    csv_heatmap_rows.append(csv_scores)
+                                    csv_heatmap_labels.append(f"L{layer}")
                         if not heatmap_rows:
                             continue
                         heatmap = np.vstack(heatmap_rows)
+
+                        if csv_heatmap_rows and sample_dir:
+                            csv_path = os.path.join(sample_dir, f"sample_{sample_idx:03d}_attention.csv")
+                            header = ["row_label"] + [
+                                f"{idx}:{label}" for idx, label in enumerate(full_index_to_label_list)
+                            ]
+                            with open(csv_path, "w", newline="", encoding="utf-8") as csv_file:
+                                writer = csv.writer(csv_file)
+                                writer.writerow(header)
+                                for row_label, scores in zip(csv_heatmap_labels, csv_heatmap_rows):
+                                    writer.writerow(
+                                        [row_label]
+                                        + [f"{float(val):.8f}" for val in scores]
+                                    )
+                            logging.info(
+                                "[attention_analysis][sample %s] heatmap values saved to %s",
+                                sample_idx,
+                                csv_path,
+                            )
 
                         xtick_labels = [index_to_label[idx] for idx in valid_indices]
                         ytick_labels = heatmap_labels
@@ -770,6 +844,34 @@ def main():
                         aggregated_matrix = (stacked * weights).sum(axis=0) / max(1.0, weight_sum)
 
                         if aggregated_matrix is not None:
+                            if sample_dir:
+                                agg_mean_full = aggregated_matrix.mean(axis=0, keepdims=True)
+                                aggregated_for_csv = np.vstack([aggregated_matrix, agg_mean_full])
+                                agg_csv_header = ["row_label"] + [
+                                    f"{idx}:{full_index_to_label_list[idx] if idx < len(full_index_to_label_list) else f'idx{idx}'}"
+                                    for idx in range(aggregated_for_csv.shape[1])
+                                ]
+                                agg_row_labels_full = [
+                                    query_labels[i] if i < len(query_labels) else f"Q{i}"
+                                    for i in range(aggregated_matrix.shape[0])
+                                ] + ["mean"]
+                                agg_csv_path = os.path.join(
+                                    sample_dir, f"sample_{sample_idx:03d}_attention_all_layers.csv"
+                                )
+                                with open(agg_csv_path, "w", newline="", encoding="utf-8") as csv_file:
+                                    writer = csv.writer(csv_file)
+                                    writer.writerow(agg_csv_header)
+                                    for row_label, row_values in zip(agg_row_labels_full, aggregated_for_csv):
+                                        writer.writerow(
+                                            [row_label]
+                                            + [f"{float(val):.8f}" for val in row_values]
+                                        )
+                                logging.info(
+                                    "[attention_analysis][sample %s] aggregated values saved to %s",
+                                    sample_idx,
+                                    agg_csv_path,
+                                )
+
                             filtered_valid_indices = [
                                 idx for idx in valid_indices if idx < aggregated_matrix.shape[1]
                             ]
@@ -835,7 +937,9 @@ def main():
                         #     float(summary_vec.norm().item()),
                         #     float(last_hidden.norm().item()),
                         # )
-                        fused_vec = last_hidden + 0.2 * summary_vec
+                        # fused_vec = last_hidden + 0.2 * summary_vec
+                        # fused_vec = last_hidden + 0.5*hidden_states_layer[batch_idx_local, -5, :].to(device=device, dtype=dtype)
+                        fused_vec = last_hidden
                         orig_idx = batch_idx_local // num_prompts
                         if 0 <= orig_idx < num_samples:
                             enhanced_embeddings[orig_idx].append(fused_vec)

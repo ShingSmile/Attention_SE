@@ -3,7 +3,7 @@ import logging
 import math
 import copy
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union, Sequence
+from typing import Dict, List, Optional, Tuple, Union, Sequence, Set
 
 import torch
 import torch.nn.functional as F
@@ -137,9 +137,14 @@ class LlamaAttention(nn.Module):
         average_last_token_attention: bool = False,
         average_attention_mask: Optional[torch.Tensor] = None,
         average_attention_heads: Optional[Sequence[int]] = None,
+        average_attention_state: Optional[Dict[str, torch.Tensor]] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
+        attention_enhance_gamma: Optional[float] = kwargs.pop("attention_enhance_gamma", None)
+        attention_enhance_non_special_mask: Optional[torch.Tensor] = kwargs.pop(
+            "attention_enhance_non_special_mask", None
+        )
 
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -194,10 +199,80 @@ class LlamaAttention(nn.Module):
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        if average_last_token_attention:
-            attn_weights = self._apply_average_attention_distribution(
-                attn_weights, average_attention_mask, average_attention_heads
+
+        key_mask_tensor: Optional[torch.Tensor] = None
+        override_scores: Optional[torch.Tensor] = None
+        apply_additive = False
+        if average_attention_state is not None:
+            key_mask_tensor = average_attention_state.get("key_mask")
+            if key_mask_tensor is not None and key_mask_tensor.device != attn_weights.device:
+                key_mask_tensor = key_mask_tensor.to(attn_weights.device)
+                average_attention_state["key_mask"] = key_mask_tensor
+            cumulative_scores = average_attention_state.get("scores")
+            cumulative_weight = average_attention_state.get("weight")
+            if cumulative_scores is not None and cumulative_weight is not None:
+                if cumulative_scores.device != attn_weights.device or cumulative_scores.dtype != attn_weights.dtype:
+                    cumulative_scores = cumulative_scores.to(attn_weights.device, dtype=attn_weights.dtype)
+                    average_attention_state["scores"] = cumulative_scores
+                if cumulative_weight.device != attn_weights.device or cumulative_weight.dtype != attn_weights.dtype:
+                    cumulative_weight = cumulative_weight.to(attn_weights.device, dtype=attn_weights.dtype)
+                    average_attention_state["weight"] = cumulative_weight
+                weight_clamped = cumulative_weight.clamp_min(1e-6)
+                override_scores = (cumulative_scores / weight_clamped).to(attn_weights.dtype)
+                apply_additive = True
+
+        layer_contrib: Optional[torch.Tensor] = None
+        if average_attention_heads:
+            layer_contrib = self._collect_layer_average_scores(
+                attn_weights,
+                average_attention_mask,
+                average_attention_heads,
+                key_mask_tensor,
             )
+            if layer_contrib is not None:
+                layer_contrib = layer_contrib.detach()
+
+        if average_last_token_attention and apply_additive and override_scores is not None:
+            attn_weights = self._apply_average_attention_distribution(
+                attn_weights,
+                average_attention_mask,
+                average_attention_heads,
+                override_scores=override_scores,
+                key_mask=key_mask_tensor,
+                additive=True,
+            )
+
+        if (
+            average_attention_state is not None
+            and layer_contrib is not None
+            and average_attention_heads
+            and len(average_attention_heads) > 0
+        ):
+            weight_value = float(max(1, len(average_attention_heads)))
+            contrib_scaled = layer_contrib.to(attn_weights.dtype) * weight_value
+            weight_tensor = attn_weights.new_full((contrib_scaled.size(0), 1), weight_value)
+            prev_scores = average_attention_state.get("scores")
+            prev_weight = average_attention_state.get("weight")
+            if prev_scores is None or prev_weight is None:
+                average_attention_state["scores"] = contrib_scaled
+                average_attention_state["weight"] = weight_tensor
+            else:
+                if prev_scores.device != contrib_scaled.device or prev_scores.dtype != contrib_scaled.dtype:
+                    prev_scores = prev_scores.to(contrib_scaled.device, dtype=contrib_scaled.dtype)
+                    average_attention_state["scores"] = prev_scores
+                if prev_weight.device != weight_tensor.device or prev_weight.dtype != weight_tensor.dtype:
+                    prev_weight = prev_weight.to(weight_tensor.device, dtype=weight_tensor.dtype)
+                    average_attention_state["weight"] = prev_weight
+                average_attention_state["scores"] = prev_scores + contrib_scaled
+                average_attention_state["weight"] = prev_weight + weight_tensor
+
+        attn_weights = self._apply_attention_enhance_last_token(
+            attn_weights,
+            average_attention_heads,
+            attention_enhance_non_special_mask,
+            attention_enhance_gamma,
+        )
+
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
 
@@ -228,14 +303,24 @@ class LlamaAttention(nn.Module):
         attn_weights: torch.Tensor,
         mask: Optional[torch.Tensor],
         head_indices: Optional[Sequence[int]],
+        override_scores: Optional[torch.Tensor] = None,          # ← 新增
+        key_mask: Optional[torch.Tensor] = None,                  # ← 新增
+        additive: bool = False,
     ) -> torch.Tensor:
-        """将 mask 指定位置的注意力头分布替换为关键头的平均注意力分布。"""
+        """将 mask 指定位置的注意力头分布替换为关键头的平均注意力分布。
+        扩展：若提供 override_scores (batch, seq_len)，则直接使用它；否则按 head_indices 计算本层均值。
+        若提供 key_mask (batch, seq_len)，则仅保留该列集合上的分布并在该集合内重新归一化。
+        当 additive=True 时，将 override_scores 作为加性偏置叠加到所有注意力头后再归一化。
+        """
         if attn_weights.ndim != 4:
             return attn_weights
-        if not head_indices:
+        if (not head_indices) and (override_scores is None):
             return attn_weights
+
         attn_weights = attn_weights.clone()
-        batch_size, _, query_len, _ = attn_weights.shape
+        batch_size, _, query_len, key_len = attn_weights.shape
+
+        # 归一化/准备 query 侧行掩码
         if mask is None:
             device = attn_weights.device
             mask = torch.zeros(batch_size, query_len, dtype=torch.bool, device=device)
@@ -245,25 +330,219 @@ class LlamaAttention(nn.Module):
                 mask = mask.to(attn_weights.device)
             if mask.shape[0] != batch_size or mask.shape[1] != query_len:
                 device = attn_weights.device
-                mask = torch.zeros(batch_size, query_len, dtype=torch.bool, device=device)
-                mask[:, -1] = True
-        for batch_idx in range(batch_size):
-            row_mask = mask[batch_idx]
-            if row_mask.ndim == 0:
+                tmp = torch.zeros(batch_size, query_len, dtype=torch.bool, device=device)
+                tmp[:, -1] = True
+                mask = tmp
+
+        # 归一化/准备 key 侧列掩码（限定平均所用 token 范围）
+        if key_mask is not None:
+            if key_mask.device != attn_weights.device:
+                key_mask = key_mask.to(attn_weights.device)
+            if key_mask.shape[0] != batch_size or key_mask.shape[1] != key_len:
+                key_mask = None
+
+        eps = 1e-12
+        for b in range(batch_size):
+            row_mask = mask[b]
+            pos = torch.nonzero(row_mask, as_tuple=False).flatten()
+            if pos.numel() == 0:
                 continue
+            heads_slice = attn_weights[b]
+
+            # 预取跨层累计分布
+            override_row = None
+            if override_scores is not None:
+                override_row = override_scores[b]
+                if override_row.device != heads_slice.device:
+                    override_row = override_row.to(heads_slice.device)
+                if override_row.dim() != 1 or override_row.numel() != key_len:
+                    override_row = None
+
+            for p in pos.tolist():
+                if 0 <= p < heads_slice.shape[1]:
+                    if override_row is not None:
+                        avg_scores = override_row
+                    else:
+                        key_head_scores = heads_slice[head_indices, p, :]
+                        if key_head_scores.numel() == 0:
+                            continue
+                        avg_scores = key_head_scores.mean(dim=0)
+
+                    # 可选：只在指定 key 列集合内保留并归一化
+                    if key_mask is not None:
+                        col_mask = key_mask[b]
+                        if col_mask.device != avg_scores.device:
+                            col_mask = col_mask.to(avg_scores.device)
+                        avg_scores = avg_scores * col_mask.to(avg_scores.dtype)
+                        if not additive:
+                            s = avg_scores.sum()
+                            if float(s) > eps:
+                                avg_scores = avg_scores / s  # 仅在有效列集合内归一化
+
+                    if float(avg_scores.sum()) > eps:
+                        avg_scores = avg_scores / avg_scores.sum()
+                    expanded = avg_scores.unsqueeze(0).expand(heads_slice.size(0), -1)
+                    # print(f"{expanded}")
+                    # print(f"{heads_slice[:, p, :]}")
+                    if additive:
+                        # print(f"Expanded Sum: {torch.sum(expanded)}")
+                        # print(f"Expanded Max: {torch.max(expanded)}")
+                        # print(f"heads_slice Sum(before): {torch.sum(heads_slice[:, p, :])}")
+                        # print(f"heads_slice Max(before): {torch.max(heads_slice[:, p, :])}")
+                        heads_slice[:, p, :] = heads_slice[:, p, :] + 0.3*expanded
+                        denom = heads_slice[:, p, :].sum(dim=-1, keepdim=True).clamp_min(eps)
+                        heads_slice[:, p, :] = heads_slice[:, p, :] / denom
+                        # print(f"heads_slice Sum(after): {torch.sum(heads_slice[:, p, :])}")
+                        # print(f"heads_slice Max(after): {torch.max(heads_slice[:, p, :])}")
+                    else:
+                        heads_slice[:, p, :] = expanded
+        return attn_weights
+
+    @staticmethod
+    def _collect_layer_average_scores(
+        attn_weights: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        head_indices: Optional[Sequence[int]],
+        key_mask: Optional[torch.Tensor],
+    ) -> Optional[torch.Tensor]:
+        """计算当前层关键头在查询位置上的平均注意力分布。"""
+        if attn_weights.ndim != 4:
+            return None
+        if not head_indices:
+            return None
+        batch_size, _, query_len, key_len = attn_weights.shape
+        device = attn_weights.device
+
+        if mask is None:
+            mask = torch.zeros(batch_size, query_len, dtype=torch.bool, device=device)
+            mask[:, -1] = True
+        else:
+            if mask.device != device:
+                mask = mask.to(device)
+            if mask.shape[0] != batch_size or mask.shape[1] != query_len:
+                tmp = torch.zeros(batch_size, query_len, dtype=torch.bool, device=device)
+                tmp[:, -1] = True
+                mask = tmp
+
+        key_mask_local = None
+        if key_mask is not None:
+            key_mask_local = key_mask
+            if key_mask_local.device != device:
+                key_mask_local = key_mask_local.to(device)
+            if key_mask_local.shape[0] != batch_size or key_mask_local.shape[1] != key_len:
+                key_mask_local = None
+
+        result = attn_weights.new_zeros(batch_size, key_len)
+        has_value = False
+        index_list = [int(idx) for idx in head_indices]
+        for b in range(batch_size):
+            row_mask = mask[b]
             positions = torch.nonzero(row_mask, as_tuple=False).flatten()
             if positions.numel() == 0:
                 continue
-            heads_slice = attn_weights[batch_idx]
-            for pos in positions.tolist():
-                if 0 <= pos < heads_slice.shape[1]:
-                    key_head_scores = heads_slice[head_indices, pos, :]
-                    if key_head_scores.numel() == 0:
-                        continue
-                    avg_scores = key_head_scores.mean(dim=0)
-                    expanded_scores = avg_scores.unsqueeze(0).expand(heads_slice.size(0), -1)
-                    heads_slice[:, pos, :] = expanded_scores
-        return attn_weights
+            head_tensor = attn_weights[b, index_list][:, positions, :]
+            if head_tensor.numel() == 0:
+                continue
+            mean_scores = head_tensor.mean(dim=0).mean(dim=0)
+            if key_mask_local is not None:
+                mean_scores = mean_scores * key_mask_local[b].to(mean_scores.dtype)
+            result[b] = mean_scores
+            has_value = True
+
+        if not has_value:
+            return None
+        return result
+
+    def _apply_attention_enhance_last_token(
+        self,
+        attn_weights: torch.Tensor,
+        head_indices: Optional[Sequence[int]],
+        non_special_mask: Optional[torch.Tensor],
+        gamma: Optional[float],
+    ) -> torch.Tensor:
+        """当配置了关键注意力头时，调整最后一个 query 的注意力分布。"""
+        if attn_weights.ndim != 4:
+            return attn_weights
+        if not head_indices:
+            return attn_weights
+        if gamma is None:
+            return attn_weights
+
+        gamma_value = float(gamma)
+        if not math.isfinite(gamma_value) or gamma_value <= 0:
+            return attn_weights
+
+        batch_size, num_heads, query_len, key_len = attn_weights.shape
+        if query_len == 0 or key_len == 0:
+            return attn_weights
+
+        means_index = key_len - 5
+        if means_index < 0:
+            return attn_weights
+
+        target_query = query_len - 1
+        device = attn_weights.device
+        dtype = attn_weights.dtype
+
+        head_list = sorted({int(h) for h in head_indices if 0 <= int(h) < num_heads})
+        if not head_list:
+            return attn_weights
+
+        if non_special_mask is not None:
+            if non_special_mask.device != device:
+                non_special_mask = non_special_mask.to(device)
+            if non_special_mask.shape[0] != batch_size or non_special_mask.shape[1] != key_len:
+                non_special_mask = None
+        if non_special_mask is None:
+            non_special_mask = torch.ones(batch_size, key_len, dtype=torch.bool, device=device)
+        special_mask = (~non_special_mask).bool()
+
+        gamma_tensor = torch.tensor(gamma_value, dtype=dtype, device=device)
+        updated_weights = attn_weights
+
+        num = 0
+        for head_idx in head_list:
+            if num >= 2 :
+                break
+            num += 1
+            base_row = attn_weights[:, head_idx, target_query, :]
+            # 跳过分散注意力层
+            # special_scores = base_row.masked_fill(~special_mask, float("-inf"))
+            # special_max = special_scores.max(dim=-1).values
+            # non_special_scores = base_row.masked_fill(non_special_mask.logical_not(), float("-inf"))
+            # non_special_max = non_special_scores.max(dim=-1).values
+            # valid_batches = torch.isfinite(special_max) & (special_max > 0.2) & torch.isfinite(non_special_max)
+
+            full_max = base_row.max(dim=-1).values
+            valid_batches = torch.isfinite(full_max)
+            if not valid_batches.any():
+                continue
+
+            batch_indices = torch.nonzero(valid_batches, as_tuple=False).squeeze(-1)
+            current_rows = base_row[batch_indices].clone()
+            current_max = full_max[batch_indices].to(dtype)
+            new_values = current_max * gamma_tensor
+            current_rows[:, means_index] = new_values
+            current_rows = torch.clamp_min(current_rows, 0.0)
+            row_sums = current_rows.sum(dim=-1, keepdim=True)
+            zero_mask = row_sums.squeeze(-1) <= 0
+            if zero_mask.any():
+                # 回退到原始分布，防止除零
+                fallback_rows = base_row[batch_indices][zero_mask]
+                current_rows[zero_mask] = fallback_rows
+                row_sums = current_rows.sum(dim=-1, keepdim=True)
+            current_rows = current_rows / row_sums
+
+            # 直接修改为 1
+            # current_rows = torch.zeros_like(base_row[batch_indices], dtype=dtype, device=device)
+            # current_rows[:, means_index] = 1.0
+
+            if updated_weights is attn_weights:
+                updated_weights = attn_weights.clone()
+            updated_weights[batch_indices, head_idx, target_query, :] = current_rows
+
+        return updated_weights
+
 
 
 
@@ -290,7 +569,17 @@ class LlamaSdpaAttention(LlamaAttention):
         average_last_token_attention = kwargs.pop("average_last_token_attention", False)
         average_attention_mask = kwargs.pop("average_attention_mask", None)
         average_attention_heads = kwargs.pop("average_attention_heads", None)
-        if average_last_token_attention or average_attention_mask is not None or average_attention_heads is not None:
+        average_attention_state = kwargs.pop("average_attention_state", None)
+        attention_enhance_gamma = kwargs.pop("attention_enhance_gamma", None)
+        attention_enhance_non_special_mask = kwargs.pop("attention_enhance_non_special_mask", None)
+        if (
+            average_last_token_attention
+            or average_attention_mask is not None
+            or average_attention_heads is not None
+            or average_attention_state is not None
+            or attention_enhance_gamma is not None
+            or attention_enhance_non_special_mask is not None
+        ):
             return super().forward(
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
@@ -303,6 +592,9 @@ class LlamaSdpaAttention(LlamaAttention):
                 average_last_token_attention=average_last_token_attention,
                 average_attention_mask=average_attention_mask,
                 average_attention_heads=average_attention_heads,
+                average_attention_state=average_attention_state,
+                attention_enhance_gamma=attention_enhance_gamma,
+                attention_enhance_non_special_mask=attention_enhance_non_special_mask,
                 **kwargs,
             )
         if output_attentions:
@@ -320,6 +612,12 @@ class LlamaSdpaAttention(LlamaAttention):
                 use_cache=use_cache,
                 cache_position=cache_position,
                 position_embeddings=position_embeddings,
+                average_last_token_attention=average_last_token_attention,
+                average_attention_mask=average_attention_mask,
+                average_attention_heads=average_attention_heads,
+                average_attention_state=average_attention_state,
+                attention_enhance_gamma=attention_enhance_gamma,
+                attention_enhance_non_special_mask=attention_enhance_non_special_mask,
             )
 
         bsz, q_len, _ = hidden_states.size()
@@ -420,6 +718,9 @@ class LlamaDecoderLayer(nn.Module):
         average_last_token_attention: bool = False,
         average_attention_mask: Optional[torch.Tensor] = None,
         average_attention_heads: Optional[Sequence[int]] = None,
+        average_attention_state: Optional[Dict[str, torch.Tensor]] = None,
+        attention_enhance_gamma: Optional[float] = None,
+        attention_enhance_non_special_mask: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -461,6 +762,9 @@ class LlamaDecoderLayer(nn.Module):
             average_last_token_attention=average_last_token_attention,
             average_attention_mask=average_attention_mask,
             average_attention_heads=average_attention_heads,
+            average_attention_state=average_attention_state,
+            attention_enhance_gamma=attention_enhance_gamma,
+            attention_enhance_non_special_mask=attention_enhance_non_special_mask,
             **kwargs,
         )
 
@@ -533,6 +837,11 @@ class LlamaModel(LlamaPreTrainedModel):
         self._summary_hidden_cache: Dict[int, torch.Tensor] = {}
         self._average_last_token_attention: bool = False
         self._average_last_token_start_layer: Optional[int] = None
+        self._average_attention_special_token_ids: Optional[Set[int]] = None
+        self._attention_enhance_gamma: Optional[float] = None
+        self._attention_enhance_override_enabled: bool = True
+        self._default_special_token_ids: Set[int] = set()
+        self._default_special_token_ids = self._collect_default_special_token_ids()
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -542,6 +851,39 @@ class LlamaModel(LlamaPreTrainedModel):
 
     def set_attention_analysis_texts(self, texts: Optional[List[Optional[str]]]) -> None:
         self._attention_analysis_pending_texts = list(texts) if texts is not None else None
+
+    def _collect_default_special_token_ids(self) -> Set[int]:
+        special_ids: Set[int] = set()
+        candidate_attrs = (
+            "pad_token_id",
+            "bos_token_id",
+            "eos_token_id",
+            "unk_token_id",
+            "mask_token_id",
+            "cls_token_id",
+            "sep_token_id",
+        )
+        for attr in candidate_attrs:
+            value = getattr(self.config, attr, None)
+            if value is not None and isinstance(value, (int, float)):
+                int_value = int(value)
+                if int_value >= 0:
+                    special_ids.add(int_value)
+        additional = getattr(self.config, "special_tokens_map_extended", None)
+        if isinstance(additional, dict):
+            for token_list in additional.values():
+                if isinstance(token_list, (list, tuple)):
+                    for token_info in token_list:
+                        if isinstance(token_info, dict):
+                            token_id = token_info.get("id")
+                            if token_id is not None:
+                                special_ids.add(int(token_id))
+        extra_ids = getattr(self.config, "additional_special_tokens_ids", None)
+        if extra_ids is not None:
+            for token_id in extra_ids:
+                if token_id is not None:
+                    special_ids.add(int(token_id))
+        return special_ids
 
     def configure_attention_enhance(self, enhance_config: Optional[Dict] = None) -> None:
         """根据配置开启或关闭注意力增强，默认作用于最后一个 token，可针对指定 token 序列。"""
@@ -559,6 +901,21 @@ class LlamaModel(LlamaPreTrainedModel):
         self._average_last_token_attention = bool(
             self.attention_enhance_config.get("average_last_token_attention", False)
         )
+        self._attention_enhance_override_enabled = bool(
+            self.attention_enhance_config.get("enable_attention_override", True)
+        )
+        combined_special_ids: Set[int] = set(self._default_special_token_ids)
+        special_token_ids = (enhance_config or {}).get("special_token_ids")
+        if special_token_ids:
+            try:
+                provided_ids = {int(tid) for tid in special_token_ids}
+                combined_special_ids.update(provided_ids)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "[attention_enhance] special_token_ids=%r 无法解析，将忽略。",
+                    special_token_ids,
+                )
+        self._average_attention_special_token_ids = combined_special_ids if combined_special_ids else None
         start_layer_value = self.attention_enhance_config.get("average_last_token_start_layer")
         self._average_last_token_start_layer = None
         if start_layer_value is not None:
@@ -579,6 +936,7 @@ class LlamaModel(LlamaPreTrainedModel):
         heads_setting = enhance_config.get("heads")
         top_k = int(enhance_config.get("top_k", 0))
         score_file = enhance_config.get("score_file")
+        head_order = str(self.attention_enhance_config.get("head_order", "score") or "score").lower()
 
         target_token_ids = enhance_config.get("target_token_ids")
         self._token_matcher = None
@@ -630,7 +988,12 @@ class LlamaModel(LlamaPreTrainedModel):
             num_heads = self.layers[layer_idx].self_attn.num_heads
             if not (0 <= head_idx < num_heads):
                 continue
-            heads_by_layer[layer_idx].append(head_idx)
+            if head_idx not in heads_by_layer[layer_idx]:
+                heads_by_layer[layer_idx].append(head_idx)
+
+        if head_order != "score":
+            for layer_idx, head_list in heads_by_layer.items():
+                head_list.sort()
 
         if not heads_by_layer:
             logger.warning(
@@ -641,91 +1004,18 @@ class LlamaModel(LlamaPreTrainedModel):
             return
 
         logger.info(
-            "[attention_enhance] 已启用：gamma=%.3f, heads_by_layer=%s, target_token_ids=%s, score_file=%s, scope=full_sequence",
+            "[attention_enhance] 已启用：gamma=%.3f, heads_by_layer=%s, target_token_ids=%s, score_file=%s, scope=last_token",
             gamma,
             {layer: heads for layer, heads in heads_by_layer.items()},
             self.attention_enhance_config.get("target_token_ids"),
             score_file,
         )
 
+        self._attention_enhance_gamma = gamma
         for layer_idx, head_indices in heads_by_layer.items():
-            unique_heads = sorted(set(head_indices))
-            if not unique_heads:
+            if not head_indices:
                 continue
-            self._attention_enhance_heads_by_layer[layer_idx] = unique_heads
-            hook = self.layers[layer_idx].self_attn.o_proj.register_forward_pre_hook(
-                self._build_attention_enhance_hook(layer_idx, unique_heads, gamma)
-            )
-            self._attention_enhance_handles.append(hook)
-
-    def _build_attention_enhance_hook(self, layer_idx: int, head_indices: List[int], gamma: float):
-        """构造单层注意力增强 hook。"""
-        num_heads = self.layers[layer_idx].self_attn.num_heads
-        head_dim = self.layers[layer_idx].self_attn.head_dim
-        heads = list(head_indices)
-
-        def hook(module, inputs):
-            if not inputs or inputs[0] is None:
-                return inputs
-            attn_output = inputs[0]
-            if attn_output.ndim != 3:
-                return inputs
-            bsz, seq_len, hidden_size = attn_output.shape
-            if seq_len == 0:
-                return inputs
-            try:
-                reshaped = attn_output.view(bsz, seq_len, num_heads, head_dim)
-            except RuntimeError:
-                # hidden_size 与 heads 数量不匹配时直接跳过
-                return inputs
-            mask = getattr(self, "_attention_enhance_mask", None)
-            if mask is None:
-                if not self._attention_enhance_mask_issue_logged:
-                    logger.debug(
-                        "[attention_enhance] 未检测到 mask，当前对全序列执行放大。"
-                    )
-                    self._attention_enhance_mask_issue_logged = True
-            else:
-                if mask.shape[1] != seq_len:
-                    if not self._attention_enhance_mask_issue_logged:
-                        logger.warning(
-                            "[attention_enhance] mask 序列长度与当前前向不匹配 (mask=%s, seq_len=%s)，仍对全序列放大。",
-                            mask.shape[1],
-                            seq_len,
-                        )
-                        self._attention_enhance_mask_issue_logged = True
-                else:
-                    if mask.device != reshaped.device:
-                        mask = mask.to(reshaped.device)
-                    if mask.any():
-                        if not self._attention_enhance_log_once:
-                            activated = mask.sum().item()
-                            logger.debug(
-                                "[attention_enhance] layer=%s heads=%s 掩码命中 token 数=%s（当前全序列放大）。",
-                                layer_idx,
-                                heads,
-                                activated,
-                            )
-                    else:
-                        if not self._attention_enhance_mask_issue_logged:
-                            logger.info(
-                                "[attention_enhance] mask 全为 False，当前改为对全序列执行放大。"
-                            )
-                            self._attention_enhance_mask_issue_logged = True
-
-            reshaped[:, :, heads, :] *= gamma
-            if not self._attention_enhance_log_once:
-                logger.debug(
-                    "[attention_enhance] layer=%s heads=%s 对全序列放大完成，seq_len=%s，gamma=%.3f。",
-                    layer_idx,
-                    heads,
-                    seq_len,
-                    gamma,
-                )
-                self._attention_enhance_log_once = True
-            return (reshaped.view(bsz, seq_len, hidden_size),)
-
-        return hook
+            self._attention_enhance_heads_by_layer[layer_idx] = head_indices
 
     def _clear_attention_enhance_hooks(self) -> None:
         """移除当前已注册的注意力增强 hook。"""
@@ -742,6 +1032,9 @@ class LlamaModel(LlamaPreTrainedModel):
         self._summary_hidden_cache = {}
         self._average_last_token_attention = False
         self._average_last_token_start_layer = None
+        self._average_attention_special_token_ids = None
+        self._attention_enhance_gamma = None
+        self._attention_enhance_override_enabled = True
 
     def _compute_attention_enhance_mask(self, input_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
         """根据配置生成需要增强的 token mask。"""
@@ -778,6 +1071,19 @@ class LlamaModel(LlamaPreTrainedModel):
         fallback_mask = torch.zeros(input_ids.shape, dtype=torch.bool, device=input_ids.device)
         fallback_mask[:, -1] = True
         return fallback_mask
+
+    def _build_average_attention_key_mask(self, input_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+        """构造用于平均注意力的 key 端掩码，过滤特殊 token。"""
+        if input_ids is None:
+            return None
+        if not self._average_last_token_attention:
+            return None
+        if not self._average_attention_special_token_ids:
+            return None
+        mask = torch.ones_like(input_ids, dtype=torch.bool)
+        for token_id in self._average_attention_special_token_ids:
+            mask &= input_ids != int(token_id)
+        return mask
 
     def _record_attention_analysis(
         self,
@@ -928,6 +1234,24 @@ class LlamaModel(LlamaPreTrainedModel):
                     self._input_device_warning_logged = False
             inputs_embeds = self.embed_tokens(input_ids)
 
+        attention_enhance_non_special_mask: Optional[torch.Tensor] = None
+        if (
+            input_ids is not None
+            and self._attention_enhance_heads_by_layer
+            and self.attention_enhance_config.get("enabled", False)
+        ):
+            device = input_ids.device
+            attention_enhance_non_special_mask = torch.ones_like(input_ids, dtype=torch.bool, device=device)
+            if self._average_attention_special_token_ids:
+                special_ids = torch.tensor(
+                    sorted(self._average_attention_special_token_ids),
+                    device=device,
+                    dtype=input_ids.dtype,
+                )
+                if special_ids.numel() > 0:
+                    matches = (input_ids.unsqueeze(-1) == special_ids.view(1, 1, -1)).any(dim=-1)
+                    attention_enhance_non_special_mask = ~matches
+
         self._attention_enhance_mask = self._compute_attention_enhance_mask(input_ids)
         analysis_limit = int(self.attention_enhance_config.get("analysis_samples", 0) or 0)
         bsz = inputs_embeds.size(0)
@@ -981,6 +1305,11 @@ class LlamaModel(LlamaPreTrainedModel):
         
 
         hidden_states = inputs_embeds
+        if (
+            attention_enhance_non_special_mask is not None
+            and attention_enhance_non_special_mask.device != hidden_states.device
+        ):
+            attention_enhance_non_special_mask = attention_enhance_non_special_mask.to(hidden_states.device)
 
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
@@ -1006,31 +1335,53 @@ class LlamaModel(LlamaPreTrainedModel):
                     start_idx = max(0, min(start_idx, total_layers - 1))
                 avg_start_idx = min(start_idx, summary_idx)
                 avg_end_idx = max(start_idx, summary_idx)
+        average_attention_state: Optional[Dict[str, torch.Tensor]] = None
+        if avg_start_idx is not None and avg_end_idx is not None:
+            key_mask_tensor = self._build_average_attention_key_mask(input_ids)
+            if key_mask_tensor is not None and key_mask_tensor.device != hidden_states.device:
+                key_mask_tensor = key_mask_tensor.to(hidden_states.device)
+            average_attention_state = {
+                "scores": None,
+                "weight": None,
+                "key_mask": key_mask_tensor,
+            }
+        attention_enhance_gamma_value: Optional[float] = (
+            float(self._attention_enhance_gamma)
+            if (
+                self._attention_enhance_override_enabled
+                and self._attention_enhance_heads_by_layer
+                and self._attention_enhance_gamma is not None
+            )
+            else None
+        )
 
         for index, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            average_last_token_attention = False
-            average_attention_mask = None
-            average_attention_heads: Optional[Sequence[int]] = None
-            if avg_start_idx is not None and avg_end_idx is not None and avg_start_idx <= index <= avg_end_idx:
-                head_indices = self._attention_enhance_heads_by_layer.get(index)
-                if head_indices:
-                    mask_tensor = self._attention_enhance_mask
-                    bsz, seq_len = hidden_states.shape[0], hidden_states.shape[1]
-                    if mask_tensor is not None:
-                        if mask_tensor.shape[1] != seq_len:
-                            mask_tensor = None
-                        else:
-                            if mask_tensor.device != hidden_states.device:
-                                mask_tensor = mask_tensor.to(hidden_states.device)
-                    if mask_tensor is None:
-                        mask_tensor = torch.zeros(bsz, seq_len, dtype=torch.bool, device=hidden_states.device)
-                        mask_tensor[:, -1] = True
-                    average_attention_mask = mask_tensor
-                    average_attention_heads = list(head_indices)
-                    average_last_token_attention = True
+            bsz, seq_len = hidden_states.shape[0], hidden_states.shape[1]
+            mask_tensor = self._attention_enhance_mask
+            if mask_tensor is not None:
+                if mask_tensor.shape[1] != seq_len:
+                    mask_tensor = None
+                else:
+                    if mask_tensor.device != hidden_states.device:
+                        mask_tensor = mask_tensor.to(hidden_states.device)
+            if mask_tensor is None:
+                mask_tensor = torch.zeros(bsz, seq_len, dtype=torch.bool, device=hidden_states.device)
+                mask_tensor[:, -1] = True
+
+            head_indices = self._attention_enhance_heads_by_layer.get(index)
+            # 跳过层
+            # if index == 14:
+            #     head_indices = None
+            average_attention_heads: Optional[Sequence[int]] = list(head_indices) if head_indices else None
+            average_attention_mask = mask_tensor
+            average_last_token_attention = (
+                avg_start_idx is not None
+                and avg_end_idx is not None
+                and avg_start_idx <= index <= avg_end_idx
+            )
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1049,6 +1400,9 @@ class LlamaModel(LlamaPreTrainedModel):
                     average_last_token_attention,
                     average_attention_mask,
                     average_attention_heads,
+                    average_attention_state,
+                    attention_enhance_gamma_value,
+                    attention_enhance_non_special_mask,
                 )
             else:
                 if self.plan == "vanilla":
@@ -1064,6 +1418,9 @@ class LlamaModel(LlamaPreTrainedModel):
                         average_last_token_attention=average_last_token_attention,
                         average_attention_mask=average_attention_mask,
                         average_attention_heads=average_attention_heads,
+                        average_attention_state=average_attention_state,
+                        attention_enhance_gamma=attention_enhance_gamma_value,
+                        attention_enhance_non_special_mask=attention_enhance_non_special_mask,
                     )
                 elif self.plan == "tp":
                     layer_index = self.tp_starting_index
@@ -1085,6 +1442,9 @@ class LlamaModel(LlamaPreTrainedModel):
                             average_last_token_attention=average_last_token_attention,
                             average_attention_mask=average_attention_mask,
                             average_attention_heads=average_attention_heads,
+                            average_attention_state=average_attention_state,
+                            attention_enhance_gamma=attention_enhance_gamma_value,
+                            attention_enhance_non_special_mask=attention_enhance_non_special_mask,
                         )
                     elif index >= layer_index and index < exiting_index:
                         B = hidden_states.shape[0]
@@ -1106,6 +1466,9 @@ class LlamaModel(LlamaPreTrainedModel):
                             average_last_token_attention=average_last_token_attention,
                             average_attention_mask=average_attention_mask,
                             average_attention_heads=average_attention_heads,
+                            average_attention_state=average_attention_state,
+                            attention_enhance_gamma=attention_enhance_gamma_value,
+                            attention_enhance_non_special_mask=attention_enhance_non_special_mask,
                         )
                     elif index >= exiting_index:
                         layer_outputs = decoder_layer(
@@ -1123,6 +1486,9 @@ class LlamaModel(LlamaPreTrainedModel):
                             average_last_token_attention=average_last_token_attention,
                             average_attention_mask=average_attention_mask,
                             average_attention_heads=average_attention_heads,
+                            average_attention_state=average_attention_state,
+                            attention_enhance_gamma=attention_enhance_gamma_value,
+                            attention_enhance_non_special_mask=attention_enhance_non_special_mask,
                         )
                     else:
                         raise ValueError("layer index error!")
