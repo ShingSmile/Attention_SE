@@ -9,7 +9,7 @@ import fcntl
 import time
 import argparse
 import csv
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from collections.abc import Mapping
 from typing import Dict, List, Optional, Tuple
 
@@ -27,6 +27,7 @@ import numpy as np
 import yaml
 import warnings
 warnings.filterwarnings("ignore")
+from datetime import datetime
 
 
 if torch.cuda.is_available():
@@ -54,6 +55,61 @@ def print_table(task_names, scores):
     tb.field_names = task_names
     tb.add_row(scores)
     print(tb)
+
+
+RESULT_CSV_PATH = "evaluation_results.csv"
+CSV_BASE_COLUMNS = [
+    "timestamp",
+    "config",
+    "mode",
+    "task_set",
+    "model_name",
+    "prompt_method",
+    "enable_attention_override",
+    "head_order",
+    "override_mode",
+    "top_k",
+    "gamma",
+]
+CSV_TASK_COLUMNS = [
+    "STSBenchmark-dev",
+    "STS12",
+    "STS13",
+    "STS14",
+    "STS15",
+    "STS16",
+    "STSBenchmark",
+    "SICKRelatedness",
+    "STS Avg.",
+    "MR",
+    "CR",
+    "SUBJ",
+    "MPQA",
+    "SST2",
+    "TREC",
+    "MRPC",
+    "Transfer Avg.",
+]
+CSV_ALL_COLUMNS = CSV_BASE_COLUMNS + CSV_TASK_COLUMNS
+
+
+def append_results_to_csv(base_info: Dict[str, str], task_scores: Dict[str, str], csv_path: str = RESULT_CSV_PATH) -> None:
+    """Append evaluation summary to csv file."""
+    if not task_scores:
+        return
+    row = OrderedDict((column, "") for column in CSV_ALL_COLUMNS)
+    for key, value in base_info.items():
+        if key in row:
+            row[key] = value
+    for task_name, score in task_scores.items():
+        if task_name in row:
+            row[task_name] = score
+    file_exists = os.path.isfile(csv_path)
+    with open(csv_path, mode="a", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=CSV_ALL_COLUMNS)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
 
 def lock_and_write_file(file_path, content):
     with open(file_path, 'a') as file:
@@ -313,6 +369,7 @@ def main():
 
         args.attention_enhance.setdefault("enable_attention_override", True)
         args.attention_enhance.setdefault("head_order", "score")
+        args.attention_enhance.setdefault("override_mode", "scale_max")
 
     if (not args.tensor_parallel) and 'llama' in model_name_lower:
         model.model.configure_attention_enhance(args.attention_enhance)
@@ -998,6 +1055,17 @@ def main():
         results[task] = result
 
     # Print evaluation results
+    csv_metrics = OrderedDict()
+
+    def collect_for_csv(task_names: List[str], scores: List[str], avg_label: Optional[str] = None) -> None:
+        for name, score in zip(task_names, scores):
+            column_name = name
+            if name == "Avg." and avg_label:
+                column_name = avg_label
+            elif name == "Avg.":
+                column_name = "Avg."
+            csv_metrics[column_name] = score
+
     if args.mode == 'dev':
         print("------ %s ------" % (args.mode))
 
@@ -1010,6 +1078,7 @@ def main():
             else:
                 scores.append("0.00")
         print_table(task_names, scores)
+        collect_for_csv(task_names, scores)
 
         task_names = []
         scores = []
@@ -1022,6 +1091,7 @@ def main():
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
+        collect_for_csv(task_names, scores, avg_label="Transfer Avg.")
 
 
     elif args.mode == 'test' or args.mode == 'fasttest':
@@ -1041,6 +1111,7 @@ def main():
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
+        collect_for_csv(task_names, scores, avg_label="STS Avg.")
         #
         # write results and template to file
         if args.task_set != 'transfer':
@@ -1059,6 +1130,22 @@ def main():
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
+        collect_for_csv(task_names, scores, avg_label="Transfer Avg.")
 
+    if csv_metrics:
+        enhance_cfg = args.attention_enhance or {}
+        base_info = OrderedDict()
+        base_info["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        base_info["config"] = args.config or ""
+        base_info["mode"] = args.mode
+        base_info["task_set"] = args.task_set
+        base_info["model_name"] = os.path.basename(args.model_name_or_path.rstrip("/"))
+        base_info["prompt_method"] = args.prompt_method
+        base_info["enable_attention_override"] = str(enhance_cfg.get("enable_attention_override", ""))
+        base_info["head_order"] = str(enhance_cfg.get("head_order", ""))
+        base_info["override_mode"] = str(enhance_cfg.get("override_mode", ""))
+        base_info["top_k"] = "" if enhance_cfg.get("top_k") is None else str(enhance_cfg.get("top_k"))
+        base_info["gamma"] = "" if enhance_cfg.get("gamma") is None else str(enhance_cfg.get("gamma"))
+        append_results_to_csv(base_info, csv_metrics)
 if __name__ == "__main__":
     main()

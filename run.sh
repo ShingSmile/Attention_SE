@@ -7,5 +7,5 @@ echo "using config file: $CONFIG_FILE"
 echo "==============="
 
 export HF_ENDPOINT=https://hf-mirror.com
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=6
 python evaluate.py --config "$MODEL_CONFIG" --config_file "$CONFIG_FILE"
