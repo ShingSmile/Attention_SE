@@ -19,6 +19,10 @@ import transformers
 from transformers import LlamaTokenizer
 from transformers import AutoTokenizer, AutoModelForCausalLM, DynamicCache
 from senllm import LlamaForCausalLM, Qwen2ForCausalLM, Gemma2ForCausalLM
+from senllm.modeling_llama import (
+    DEFAULT_ZERO_SPECIAL_SKIP_THRESHOLD,
+    DEFAULT_ZERO_SPECIAL_TARGET_THRESHOLD,
+)
 from senllm.token_matching import TokenSequenceMatcher
 from colorama import Fore, Style
 import textwrap
@@ -369,7 +373,44 @@ def main():
 
         args.attention_enhance.setdefault("enable_attention_override", True)
         args.attention_enhance.setdefault("head_order", "score")
-        args.attention_enhance.setdefault("override_mode", "scale_max")
+        override_mode_raw = args.attention_enhance.get(
+            "override_mode",
+            args.attention_enhance.get("mode", "scale_max"),
+        )
+        override_mode = str(override_mode_raw or "").strip().lower()
+        if override_mode not in {"scale_max", "zero_special"}:
+            logging.warning(
+                "[attention_enhance] override_mode=%r 不受支持，将回退为 scale_max。",
+                override_mode_raw,
+            )
+            override_mode = "scale_max"
+        args.attention_enhance["override_mode"] = override_mode
+
+        if override_mode == "zero_special":
+            skip_raw = args.attention_enhance.get("zero_special_skip_threshold")
+            target_raw = args.attention_enhance.get("zero_special_target_threshold")
+            skip_threshold = DEFAULT_ZERO_SPECIAL_SKIP_THRESHOLD
+            target_threshold = DEFAULT_ZERO_SPECIAL_TARGET_THRESHOLD
+            if skip_raw is not None:
+                try:
+                    skip_threshold = float(skip_raw)
+                except (TypeError, ValueError):
+                    logging.warning(
+                        "[attention_enhance] zero_special_skip_threshold=%r 解析失败，使用默认值 %.3f。",
+                        skip_raw,
+                        DEFAULT_ZERO_SPECIAL_SKIP_THRESHOLD,
+                    )
+            if target_raw is not None:
+                try:
+                    target_threshold = float(target_raw)
+                except (TypeError, ValueError):
+                    logging.warning(
+                        "[attention_enhance] zero_special_target_threshold=%r 解析失败，使用默认值 %.3f。",
+                        target_raw,
+                        DEFAULT_ZERO_SPECIAL_TARGET_THRESHOLD,
+                    )
+            args.attention_enhance["zero_special_skip_threshold"] = skip_threshold
+            args.attention_enhance["zero_special_target_threshold"] = target_threshold
 
     if (not args.tensor_parallel) and 'llama' in model_name_lower:
         model.model.configure_attention_enhance(args.attention_enhance)
@@ -482,7 +523,7 @@ def main():
             batch[k] = batch[k].to(device) if batch[k] is not None else None
         # Get raw embeddings
         if hasattr(model, "model") and hasattr(model.model, "set_attention_analysis_texts"):
-            model.model.set_attention_analysis_texts(injected_texts)
+            model.model.set_attention_analysis_texts(injected_texts, tokenizer=tokenizer)
         with torch.no_grad():
             raw_outputs = model(
                 output_hidden_states=True,
@@ -1066,6 +1107,8 @@ def main():
                 column_name = "Avg."
             csv_metrics[column_name] = score
 
+    sts_scores: List[str] = []
+
     if args.mode == 'dev':
         print("------ %s ------" % (args.mode))
 
@@ -1079,6 +1122,7 @@ def main():
                 scores.append("0.00")
         print_table(task_names, scores)
         collect_for_csv(task_names, scores)
+        sts_scores = list(scores)
 
         task_names = []
         scores = []
@@ -1112,13 +1156,7 @@ def main():
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
         collect_for_csv(task_names, scores, avg_label="STS Avg.")
-        #
-        # write results and template to file
-        if args.task_set != 'transfer':
-            with open('./sts-enhance-results', 'a') as f:
-                model_name = args.model_name_or_path.split('/')[-1]
-                f.write(model_name + ' ' + str(COEFF) + ' ' + str(args.tp_starting_index) + ' ' + ' '.join([str(s) for s in scores]) + '\n')
-
+        sts_scores = list(scores)
         task_names = []
         scores = []
         for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
@@ -1132,8 +1170,64 @@ def main():
         print_table(task_names, scores)
         collect_for_csv(task_names, scores, avg_label="Transfer Avg.")
 
+    enhance_cfg = args.attention_enhance or {}
+
+    skip_total = 0
+    if hasattr(model, "model") and hasattr(model.model, "get_zero_special_skip_total"):
+        skip_total = int(model.model.get_zero_special_skip_total())
+        if skip_total:
+            logging.info(
+                "[attention_enhance][zero_special] total skipped boosts=%d",
+                skip_total,
+            )
+
+    skip_threshold_val = enhance_cfg.get("zero_special_skip_threshold")
+    target_threshold_val = enhance_cfg.get("zero_special_target_threshold")
+    if skip_threshold_val is None and hasattr(model, "model"):
+        skip_threshold_val = getattr(model.model, "_zero_special_skip_threshold", None)
+    if target_threshold_val is None and hasattr(model, "model"):
+        target_threshold_val = getattr(model.model, "_zero_special_target_threshold", None)
+
+    skip_threshold_float: Optional[float] = None
+    target_threshold_float: Optional[float] = None
+    if skip_threshold_val is not None:
+        try:
+            skip_threshold_float = float(skip_threshold_val)
+        except (TypeError, ValueError):
+            skip_threshold_float = None
+    if target_threshold_val is not None:
+        try:
+            target_threshold_float = float(target_threshold_val)
+        except (TypeError, ValueError):
+            target_threshold_float = None
+
+    #
+    # write results and template to file
+    if args.task_set != 'transfer':
+        with open('./sts-enhance-results', 'a') as f:
+            model_name = args.model_name_or_path.split('/')[-1]
+            skip_field = f" skip={skip_total}"
+            if skip_threshold_float is not None:
+                skip_field += f" skip_thr={skip_threshold_float:.3f}"
+            elif skip_threshold_val is not None:
+                skip_field += f" skip_thr={skip_threshold_val}"
+            if target_threshold_float is not None:
+                skip_field += f" boost_thr={target_threshold_float:.3f}"
+            elif target_threshold_val is not None:
+                skip_field += f" boost_thr={target_threshold_val}"
+            f.write(
+                model_name
+                + ' '
+                + str(COEFF)
+                + ' '
+                + str(args.tp_starting_index)
+                + ' '
+                + ' '.join([str(s) for s in sts_scores])
+                + skip_field
+                + '\n'
+            )
+
     if csv_metrics:
-        enhance_cfg = args.attention_enhance or {}
         base_info = OrderedDict()
         base_info["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         base_info["config"] = args.config or ""
@@ -1146,6 +1240,13 @@ def main():
         base_info["override_mode"] = str(enhance_cfg.get("override_mode", ""))
         base_info["top_k"] = "" if enhance_cfg.get("top_k") is None else str(enhance_cfg.get("top_k"))
         base_info["gamma"] = "" if enhance_cfg.get("gamma") is None else str(enhance_cfg.get("gamma"))
+        base_info["zero_special_skip_threshold"] = (
+            "" if skip_threshold_float is None else f"{skip_threshold_float:.6f}"
+        )
+        base_info["zero_special_target_threshold"] = (
+            "" if target_threshold_float is None else f"{target_threshold_float:.6f}"
+        )
+        base_info["zero_special_skip"] = str(skip_total)
         append_results_to_csv(base_info, csv_metrics)
 if __name__ == "__main__":
     main()
