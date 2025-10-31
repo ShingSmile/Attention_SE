@@ -1,0 +1,1567 @@
+{
+  "timestamp": "2025-10-31T07:49:38.595220",
+  "sample_index": 2,
+  "prompt": "<unk><unk><unk><unk><unk><unk><unk><unk><unk><s> This sentence : \"druce will face murder charges , conte said .\" means in one word:\"",
+  "input_text": "druce will face murder charges , conte said .",
+  "probe_texts": [],
+  "probe_positions": [
+    -5,
+    -1
+  ],
+  "tokens": [
+    {
+      "token_index": 25,
+      "token_id": 2794,
+      "token": "means",
+      "layers": [
+        {
+          "layer": 6,
+          "top_candidates": [
+            {
+              "token_id": 30268,
+              "token": "Ґ",
+              "prob": 0.046141691505908966
+            },
+            {
+              "token_id": 3912,
+              "token": "HT",
+              "prob": 0.010787734761834145
+            },
+            {
+              "token_id": 10440,
+              "token": "encore",
+              "prob": 0.007254245691001415
+            },
+            {
+              "token_id": 2639,
+              "token": "Portail",
+              "prob": 0.006130604539066553
+            },
+            {
+              "token_id": 6086,
+              "token": "Datos",
+              "prob": 0.005579689983278513
+            },
+            {
+              "token_id": 31712,
+              "token": "ා",
+              "prob": 0.005065049510449171
+            },
+            {
+              "token_id": 8765,
+              "token": "фе",
+              "prob": 0.00505427923053503
+            },
+            {
+              "token_id": 30538,
+              "token": "き",
+              "prob": 0.004913181532174349
+            },
+            {
+              "token_id": 25049,
+              "token": "empre",
+              "prob": 0.0038031949661672115
+            },
+            {
+              "token_id": 5065,
+              "token": "ur",
+              "prob": 0.0037415530532598495
+            }
+          ]
+        },
+        {
+          "layer": 7,
+          "top_candidates": [
+            {
+              "token_id": 30268,
+              "token": "Ґ",
+              "prob": 0.022108027711510658
+            },
+            {
+              "token_id": 3912,
+              "token": "HT",
+              "prob": 0.013643619604408741
+            },
+            {
+              "token_id": 6086,
+              "token": "Datos",
+              "prob": 0.011359093710780144
+            },
+            {
+              "token_id": 11128,
+              "token": "ню",
+              "prob": 0.008160188794136047
+            },
+            {
+              "token_id": 14131,
+              "token": "Constra",
+              "prob": 0.007778290193527937
+            },
+            {
+              "token_id": 26067,
+              "token": "KB",
+              "prob": 0.007213568780571222
+            },
+            {
+              "token_id": 23267,
+              "token": "Flora",
+              "prob": 0.006188319530338049
+            },
+            {
+              "token_id": 17210,
+              "token": "lès",
+              "prob": 0.005955035332590342
+            },
+            {
+              "token_id": 19127,
+              "token": "HC",
+              "prob": 0.005855611991137266
+            },
+            {
+              "token_id": 16981,
+              "token": "Aires",
+              "prob": 0.005804779008030891
+            }
+          ]
+        },
+        {
+          "layer": 8,
+          "top_candidates": [
+            {
+              "token_id": 3912,
+              "token": "HT",
+              "prob": 0.08575797826051712
+            },
+            {
+              "token_id": 23267,
+              "token": "Flora",
+              "prob": 0.03641562908887863
+            },
+            {
+              "token_id": 15417,
+              "token": "unächst",
+              "prob": 0.032711535692214966
+            },
+            {
+              "token_id": 19127,
+              "token": "HC",
+              "prob": 0.011769033037126064
+            },
+            {
+              "token_id": 11128,
+              "token": "ню",
+              "prob": 0.009783757850527763
+            },
+            {
+              "token_id": 22697,
+              "token": "ipage",
+              "prob": 0.008520245552062988
+            },
+            {
+              "token_id": 14131,
+              "token": "Constra",
+              "prob": 0.007073512300848961
+            },
+            {
+              "token_id": 30268,
+              "token": "Ґ",
+              "prob": 0.006123879458755255
+            },
+            {
+              "token_id": 14119,
+              "token": "oire",
+              "prob": 0.005489852745085955
+            },
+            {
+              "token_id": 6086,
+              "token": "Datos",
+              "prob": 0.00502439308911562
+            }
+          ]
+        },
+        {
+          "layer": 11,
+          "top_candidates": [
+            {
+              "token_id": 30538,
+              "token": "き",
+              "prob": 0.010736976750195026
+            },
+            {
+              "token_id": 31664,
+              "token": "߬",
+              "prob": 0.009099770337343216
+            },
+            {
+              "token_id": 31553,
+              "token": "黒",
+              "prob": 0.008721196092665195
+            },
+            {
+              "token_id": 3912,
+              "token": "HT",
+              "prob": 0.00848881434649229
+            },
+            {
+              "token_id": 24875,
+              "token": "Runtime",
+              "prob": 0.008268251083791256
+            },
+            {
+              "token_id": 27731,
+              "token": "anh",
+              "prob": 0.00801112875342369
+            },
+            {
+              "token_id": 17210,
+              "token": "lès",
+              "prob": 0.007926295511424541
+            },
+            {
+              "token_id": 20934,
+              "token": "ombres",
+              "prob": 0.007722396403551102
+            },
+            {
+              "token_id": 17467,
+              "token": "inwon",
+              "prob": 0.007627770304679871
+            },
+            {
+              "token_id": 21861,
+              "token": "tong",
+              "prob": 0.007168193813413382
+            }
+          ]
+        },
+        {
+          "layer": 13,
+          "top_candidates": [
+            {
+              "token_id": 27604,
+              "token": "cko",
+              "prob": 0.018709253519773483
+            },
+            {
+              "token_id": 19127,
+              "token": "HC",
+              "prob": 0.010903549380600452
+            },
+            {
+              "token_id": 6761,
+              "token": "contra",
+              "prob": 0.0099741006270051
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.008006986230611801
+            },
+            {
+              "token_id": 14588,
+              "token": "anch",
+              "prob": 0.007246316876262426
+            },
+            {
+              "token_id": 30538,
+              "token": "き",
+              "prob": 0.0050498852506279945
+            },
+            {
+              "token_id": 6735,
+              "token": "annot",
+              "prob": 0.004710901994258165
+            },
+            {
+              "token_id": 27753,
+              "token": "Atlas",
+              "prob": 0.004699912387877703
+            },
+            {
+              "token_id": 25923,
+              "token": "cyk",
+              "prob": 0.004169420804828405
+            },
+            {
+              "token_id": 1609,
+              "token": "by",
+              "prob": 0.004166795406490564
+            }
+          ]
+        },
+        {
+          "layer": 15,
+          "top_candidates": [
+            {
+              "token_id": 14830,
+              "token": "atel",
+              "prob": 0.02169637754559517
+            },
+            {
+              "token_id": 7818,
+              "token": "FT",
+              "prob": 0.015337583608925343
+            },
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.011030971072614193
+            },
+            {
+              "token_id": 19127,
+              "token": "HC",
+              "prob": 0.0100844232365489
+            },
+            {
+              "token_id": 22480,
+              "token": "ebol",
+              "prob": 0.0070602125488221645
+            },
+            {
+              "token_id": 10588,
+              "token": "widet",
+              "prob": 0.006925451569259167
+            },
+            {
+              "token_id": 30538,
+              "token": "き",
+              "prob": 0.006560607347637415
+            },
+            {
+              "token_id": 23657,
+              "token": "Gilbert",
+              "prob": 0.006460675038397312
+            },
+            {
+              "token_id": 27361,
+              "token": "aterra",
+              "prob": 0.0059056649915874004
+            },
+            {
+              "token_id": 21473,
+              "token": "ardin",
+              "prob": 0.005525689106434584
+            }
+          ]
+        },
+        {
+          "layer": 16,
+          "top_candidates": [
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.02282543107867241
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.01323734037578106
+            },
+            {
+              "token_id": 14830,
+              "token": "atel",
+              "prob": 0.011092969216406345
+            },
+            {
+              "token_id": 30538,
+              "token": "き",
+              "prob": 0.00906972773373127
+            },
+            {
+              "token_id": 7818,
+              "token": "FT",
+              "prob": 0.008240800350904465
+            },
+            {
+              "token_id": 4261,
+              "token": "=>",
+              "prob": 0.008145196363329887
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.008107620291411877
+            },
+            {
+              "token_id": 23350,
+              "token": "Grace",
+              "prob": 0.007825094275176525
+            },
+            {
+              "token_id": 30882,
+              "token": "？",
+              "prob": 0.005731815472245216
+            },
+            {
+              "token_id": 21861,
+              "token": "tong",
+              "prob": 0.005039926618337631
+            }
+          ]
+        },
+        {
+          "layer": 17,
+          "top_candidates": [
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.020001951605081558
+            },
+            {
+              "token_id": 2099,
+              "token": "mean",
+              "prob": 0.015526796691119671
+            },
+            {
+              "token_id": 3912,
+              "token": "HT",
+              "prob": 0.011745910160243511
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.011640895158052444
+            },
+            {
+              "token_id": 14830,
+              "token": "atel",
+              "prob": 0.011002977378666401
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.010081087239086628
+            },
+            {
+              "token_id": 30882,
+              "token": "？",
+              "prob": 0.00955071859061718
+            },
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.009312116540968418
+            },
+            {
+              "token_id": 26791,
+              "token": "hens",
+              "prob": 0.008204534649848938
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.006589838769286871
+            }
+          ]
+        },
+        {
+          "layer": 18,
+          "top_candidates": [
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.02236814796924591
+            },
+            {
+              "token_id": 30882,
+              "token": "？",
+              "prob": 0.018382208421826363
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.01715848222374916
+            },
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.016551397740840912
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.015555953606963158
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.014037626795470715
+            },
+            {
+              "token_id": 14961,
+              "token": "gram",
+              "prob": 0.01397769246250391
+            },
+            {
+              "token_id": 14830,
+              "token": "atel",
+              "prob": 0.011670022271573544
+            },
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.008627279661595821
+            },
+            {
+              "token_id": 25923,
+              "token": "cyk",
+              "prob": 0.008443430066108704
+            }
+          ]
+        },
+        {
+          "layer": 19,
+          "top_candidates": [
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.7177574634552002
+            },
+            {
+              "token_id": 5816,
+              "token": "what",
+              "prob": 0.0220247283577919
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.016918377950787544
+            },
+            {
+              "token_id": 1724,
+              "token": "What",
+              "prob": 0.015154129825532436
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.009448213502764702
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.007982390932738781
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.007080145180225372
+            },
+            {
+              "token_id": 5618,
+              "token": "What",
+              "prob": 0.006281143054366112
+            },
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.00615486316382885
+            },
+            {
+              "token_id": 14961,
+              "token": "gram",
+              "prob": 0.005739573854953051
+            }
+          ]
+        },
+        {
+          "layer": 20,
+          "top_candidates": [
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.7775059342384338
+            },
+            {
+              "token_id": 5816,
+              "token": "what",
+              "prob": 0.0487617552280426
+            },
+            {
+              "token_id": 1724,
+              "token": "What",
+              "prob": 0.01870167814195156
+            },
+            {
+              "token_id": 5618,
+              "token": "What",
+              "prob": 0.010297166183590889
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.008995706215500832
+            },
+            {
+              "token_id": 14961,
+              "token": "gram",
+              "prob": 0.008267820812761784
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.008017712272703648
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.006268083583563566
+            },
+            {
+              "token_id": 30882,
+              "token": "？",
+              "prob": 0.0033734573516994715
+            },
+            {
+              "token_id": 8000,
+              "token": "while",
+              "prob": 0.0023698550648987293
+            }
+          ]
+        },
+        {
+          "layer": 21,
+          "top_candidates": [
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.49412453174591064
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.12064135074615479
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.06720121949911118
+            },
+            {
+              "token_id": 5816,
+              "token": "what",
+              "prob": 0.028362182900309563
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.019999776035547256
+            },
+            {
+              "token_id": 14961,
+              "token": "gram",
+              "prob": 0.017123118042945862
+            },
+            {
+              "token_id": 393,
+              "token": "that",
+              "prob": 0.012849352322518826
+            },
+            {
+              "token_id": 1724,
+              "token": "What",
+              "prob": 0.010260333307087421
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.008151344023644924
+            },
+            {
+              "token_id": 5511,
+              "token": "dass",
+              "prob": 0.007807526271790266
+            }
+          ]
+        },
+        {
+          "layer": 24,
+          "top_candidates": [
+            {
+              "token_id": 26179,
+              "token": "dru",
+              "prob": 0.8938447833061218
+            },
+            {
+              "token_id": 16597,
+              "token": "Dru",
+              "prob": 0.04633454605937004
+            },
+            {
+              "token_id": 5883,
+              "token": "dru",
+              "prob": 0.03192941099405289
+            },
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.014978020451962948
+            },
+            {
+              "token_id": 15721,
+              "token": "drug",
+              "prob": 0.005384774878621101
+            },
+            {
+              "token_id": 4281,
+              "token": "что",
+              "prob": 0.0008512024651281536
+            },
+            {
+              "token_id": 393,
+              "token": "that",
+              "prob": 0.0007288508350029588
+            },
+            {
+              "token_id": 30882,
+              "token": "？",
+              "prob": 0.0006120646721683443
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.0005608212668448687
+            },
+            {
+              "token_id": 5816,
+              "token": "what",
+              "prob": 0.0003722058900166303
+            }
+          ]
+        },
+        {
+          "layer": 29,
+          "top_candidates": [
+            {
+              "token_id": 26179,
+              "token": "dru",
+              "prob": 0.6760119795799255
+            },
+            {
+              "token_id": 5883,
+              "token": "dru",
+              "prob": 0.16356776654720306
+            },
+            {
+              "token_id": 584,
+              "token": ":",
+              "prob": 0.06665550172328949
+            },
+            {
+              "token_id": 825,
+              "token": "what",
+              "prob": 0.043302763253450394
+            },
+            {
+              "token_id": 16597,
+              "token": "Dru",
+              "prob": 0.022909902036190033
+            },
+            {
+              "token_id": 393,
+              "token": "that",
+              "prob": 0.008138350211083889
+            },
+            {
+              "token_id": 1554,
+              "token": "something",
+              "prob": 0.0015561507316306233
+            },
+            {
+              "token_id": 3078,
+              "token": "nothing",
+              "prob": 0.0014243019977584481
+            },
+            {
+              "token_id": 26900,
+              "token": "DR",
+              "prob": 0.0006865138420835137
+            },
+            {
+              "token_id": 607,
+              "token": "which",
+              "prob": 0.0005732920835725963
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "token_index": 29,
+      "token_id": 6160,
+      "token": ":\"",
+      "layers": [
+        {
+          "layer": 6,
+          "top_candidates": [
+            {
+              "token_id": 16196,
+              "token": "textt",
+              "prob": 0.025769995525479317
+            },
+            {
+              "token_id": 13753,
+              "token": "œuv",
+              "prob": 0.02239074930548668
+            },
+            {
+              "token_id": 20985,
+              "token": "staden",
+              "prob": 0.01972903683781624
+            },
+            {
+              "token_id": 14623,
+              "token": "anter",
+              "prob": 0.019521066918969154
+            },
+            {
+              "token_id": 16084,
+              "token": "ischof",
+              "prob": 0.018378473818302155
+            },
+            {
+              "token_id": 8706,
+              "token": "ozzá",
+              "prob": 0.018046323210000992
+            },
+            {
+              "token_id": 21275,
+              "token": "penas",
+              "prob": 0.013400061056017876
+            },
+            {
+              "token_id": 12497,
+              "token": "Audiodateien",
+              "prob": 0.011586517095565796
+            },
+            {
+              "token_id": 29463,
+              "token": "ént",
+              "prob": 0.011089744046330452
+            },
+            {
+              "token_id": 22013,
+              "token": "hinter",
+              "prob": 0.00917621050029993
+            }
+          ]
+        },
+        {
+          "layer": 7,
+          "top_candidates": [
+            {
+              "token_id": 20985,
+              "token": "staden",
+              "prob": 0.03863585367798805
+            },
+            {
+              "token_id": 8706,
+              "token": "ozzá",
+              "prob": 0.033761873841285706
+            },
+            {
+              "token_id": 16084,
+              "token": "ischof",
+              "prob": 0.015282372012734413
+            },
+            {
+              "token_id": 12497,
+              "token": "Audiodateien",
+              "prob": 0.009411560371518135
+            },
+            {
+              "token_id": 13058,
+              "token": "clock",
+              "prob": 0.0085725924000144
+            },
+            {
+              "token_id": 19351,
+              "token": "égl",
+              "prob": 0.00851317960768938
+            },
+            {
+              "token_id": 31500,
+              "token": "̂",
+              "prob": 0.007576546166092157
+            },
+            {
+              "token_id": 6497,
+              "token": "repla",
+              "prob": 0.006871534511446953
+            },
+            {
+              "token_id": 22715,
+              "token": "istre",
+              "prob": 0.005972803570330143
+            },
+            {
+              "token_id": 8361,
+              "token": "önig",
+              "prob": 0.005373851861804724
+            }
+          ]
+        },
+        {
+          "layer": 8,
+          "top_candidates": [
+            {
+              "token_id": 12497,
+              "token": "Audiodateien",
+              "prob": 0.053031075745821
+            },
+            {
+              "token_id": 20448,
+              "token": "Kontrola",
+              "prob": 0.017169727012515068
+            },
+            {
+              "token_id": 22715,
+              "token": "istre",
+              "prob": 0.015115886926651001
+            },
+            {
+              "token_id": 19351,
+              "token": "égl",
+              "prob": 0.014771784655749798
+            },
+            {
+              "token_id": 909,
+              "token": "tring",
+              "prob": 0.01414306927472353
+            },
+            {
+              "token_id": 17516,
+              "token": "lesia",
+              "prob": 0.01336605940014124
+            },
+            {
+              "token_id": 5801,
+              "token": "oro",
+              "prob": 0.008095701225101948
+            },
+            {
+              "token_id": 28071,
+              "token": "рист",
+              "prob": 0.006867346353828907
+            },
+            {
+              "token_id": 24096,
+              "token": "andenburg",
+              "prob": 0.0063012936152517796
+            },
+            {
+              "token_id": 3000,
+              "token": "anguage",
+              "prob": 0.006091463845223188
+            }
+          ]
+        },
+        {
+          "layer": 11,
+          "top_candidates": [
+            {
+              "token_id": 17062,
+              "token": "gate",
+              "prob": 0.012326464988291264
+            },
+            {
+              "token_id": 26564,
+              "token": "kaf",
+              "prob": 0.00894282478839159
+            },
+            {
+              "token_id": 909,
+              "token": "tring",
+              "prob": 0.008685730397701263
+            },
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.0065493155270814896
+            },
+            {
+              "token_id": 24425,
+              "token": "emu",
+              "prob": 0.0057840957306325436
+            },
+            {
+              "token_id": 13434,
+              "token": "opher",
+              "prob": 0.005773516837507486
+            },
+            {
+              "token_id": 3074,
+              "token": "burg",
+              "prob": 0.005231121554970741
+            },
+            {
+              "token_id": 21275,
+              "token": "penas",
+              "prob": 0.004966253414750099
+            },
+            {
+              "token_id": 11154,
+              "token": "terne",
+              "prob": 0.0044629513286054134
+            },
+            {
+              "token_id": 31982,
+              "token": "番",
+              "prob": 0.004170140251517296
+            }
+          ]
+        },
+        {
+          "layer": 13,
+          "top_candidates": [
+            {
+              "token_id": 909,
+              "token": "tring",
+              "prob": 0.07991701364517212
+            },
+            {
+              "token_id": 24666,
+              "token": "vb",
+              "prob": 0.008857036009430885
+            },
+            {
+              "token_id": 5742,
+              "token": "behind",
+              "prob": 0.006553397513926029
+            },
+            {
+              "token_id": 22870,
+              "token": "ому",
+              "prob": 0.00547826150432229
+            },
+            {
+              "token_id": 26415,
+              "token": "ríguez",
+              "prob": 0.004897107370197773
+            },
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.004083456937223673
+            },
+            {
+              "token_id": 3001,
+              "token": "total",
+              "prob": 0.0037004882469773293
+            },
+            {
+              "token_id": 31633,
+              "token": "介",
+              "prob": 0.0036236473824828863
+            },
+            {
+              "token_id": 17892,
+              "token": "subfigure",
+              "prob": 0.0033903662115335464
+            },
+            {
+              "token_id": 11683,
+              "token": "Î",
+              "prob": 0.0033153595868498087
+            }
+          ]
+        },
+        {
+          "layer": 15,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.023393573239445686
+            },
+            {
+              "token_id": 12410,
+              "token": "abei",
+              "prob": 0.016795564442873
+            },
+            {
+              "token_id": 31191,
+              "token": "否",
+              "prob": 0.0077372766099870205
+            },
+            {
+              "token_id": 18789,
+              "token": "rola",
+              "prob": 0.007578617427498102
+            },
+            {
+              "token_id": 4159,
+              "token": "untu",
+              "prob": 0.0068296571262180805
+            },
+            {
+              "token_id": 3405,
+              "token": "lat",
+              "prob": 0.005559219047427177
+            },
+            {
+              "token_id": 17738,
+              "token": "häng",
+              "prob": 0.0049634953029453754
+            },
+            {
+              "token_id": 8793,
+              "token": "Bras",
+              "prob": 0.004618247039616108
+            },
+            {
+              "token_id": 909,
+              "token": "tring",
+              "prob": 0.004407310858368874
+            },
+            {
+              "token_id": 2376,
+              "token": "loy",
+              "prob": 0.004366062115877867
+            }
+          ]
+        },
+        {
+          "layer": 16,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.40896308422088623
+            },
+            {
+              "token_id": 12410,
+              "token": "abei",
+              "prob": 0.017124401405453682
+            },
+            {
+              "token_id": 13167,
+              "token": "bere",
+              "prob": 0.008266083896160126
+            },
+            {
+              "token_id": 26058,
+              "token": "iono",
+              "prob": 0.007894479669630527
+            },
+            {
+              "token_id": 31191,
+              "token": "否",
+              "prob": 0.007860972546041012
+            },
+            {
+              "token_id": 26415,
+              "token": "ríguez",
+              "prob": 0.005969699937850237
+            },
+            {
+              "token_id": 4261,
+              "token": "=>",
+              "prob": 0.005582781974226236
+            },
+            {
+              "token_id": 30315,
+              "token": "∀",
+              "prob": 0.004698471166193485
+            },
+            {
+              "token_id": 17738,
+              "token": "häng",
+              "prob": 0.004611840937286615
+            },
+            {
+              "token_id": 12479,
+              "token": "Audiod",
+              "prob": 0.004492291249334812
+            }
+          ]
+        },
+        {
+          "layer": 17,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.1452026665210724
+            },
+            {
+              "token_id": 909,
+              "token": "tring",
+              "prob": 0.010011046193540096
+            },
+            {
+              "token_id": 31234,
+              "token": "▸",
+              "prob": 0.00956506934016943
+            },
+            {
+              "token_id": 26415,
+              "token": "ríguez",
+              "prob": 0.007488798350095749
+            },
+            {
+              "token_id": 4261,
+              "token": "=>",
+              "prob": 0.007030000910162926
+            },
+            {
+              "token_id": 27634,
+              "token": "unicí",
+              "prob": 0.006988840643316507
+            },
+            {
+              "token_id": 18221,
+              "token": "cowo",
+              "prob": 0.006631592288613319
+            },
+            {
+              "token_id": 21245,
+              "token": "upt",
+              "prob": 0.006289027165621519
+            },
+            {
+              "token_id": 31191,
+              "token": "否",
+              "prob": 0.0055999355390667915
+            },
+            {
+              "token_id": 13167,
+              "token": "bere",
+              "prob": 0.004763793665915728
+            }
+          ]
+        },
+        {
+          "layer": 18,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.13654670119285583
+            },
+            {
+              "token_id": 21245,
+              "token": "upt",
+              "prob": 0.010746489278972149
+            },
+            {
+              "token_id": 20448,
+              "token": "Kontrola",
+              "prob": 0.009856093674898148
+            },
+            {
+              "token_id": 31234,
+              "token": "▸",
+              "prob": 0.007608591113239527
+            },
+            {
+              "token_id": 14365,
+              "token": "________",
+              "prob": 0.006615784484893084
+            },
+            {
+              "token_id": 19443,
+              "token": "quelle",
+              "prob": 0.0061632501892745495
+            },
+            {
+              "token_id": 30739,
+              "token": "～",
+              "prob": 0.005370373371988535
+            },
+            {
+              "token_id": 26415,
+              "token": "ríguez",
+              "prob": 0.0053638857789337635
+            },
+            {
+              "token_id": 21173,
+              "token": "entferne",
+              "prob": 0.004897880367934704
+            },
+            {
+              "token_id": 5665,
+              "token": "sequence",
+              "prob": 0.004431640263646841
+            }
+          ]
+        },
+        {
+          "layer": 19,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.07931934297084808
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.023749006912112236
+            },
+            {
+              "token_id": 25697,
+              "token": "geg",
+              "prob": 0.008935450576245785
+            },
+            {
+              "token_id": 21245,
+              "token": "upt",
+              "prob": 0.007791590876877308
+            },
+            {
+              "token_id": 18221,
+              "token": "cowo",
+              "prob": 0.00600402569398284
+            },
+            {
+              "token_id": 11806,
+              "token": "determin",
+              "prob": 0.005149931646883488
+            },
+            {
+              "token_id": 30739,
+              "token": "～",
+              "prob": 0.005097898188978434
+            },
+            {
+              "token_id": 23916,
+              "token": "ográfica",
+              "prob": 0.0047442493960261345
+            },
+            {
+              "token_id": 21173,
+              "token": "entferne",
+              "prob": 0.004610937554389238
+            },
+            {
+              "token_id": 31234,
+              "token": "▸",
+              "prob": 0.0039765844121575356
+            }
+          ]
+        },
+        {
+          "layer": 20,
+          "top_candidates": [
+            {
+              "token_id": 31840,
+              "token": "❯",
+              "prob": 0.028545452281832695
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.013747228309512138
+            },
+            {
+              "token_id": 20448,
+              "token": "Kontrola",
+              "prob": 0.012663664296269417
+            },
+            {
+              "token_id": 18221,
+              "token": "cowo",
+              "prob": 0.008706685155630112
+            },
+            {
+              "token_id": 19443,
+              "token": "quelle",
+              "prob": 0.007284253370016813
+            },
+            {
+              "token_id": 21245,
+              "token": "upt",
+              "prob": 0.00542111974209547
+            },
+            {
+              "token_id": 23916,
+              "token": "ográfica",
+              "prob": 0.0047284881584346294
+            },
+            {
+              "token_id": 8191,
+              "token": "férences",
+              "prob": 0.004162983037531376
+            },
+            {
+              "token_id": 31447,
+              "token": "ड",
+              "prob": 0.004088865127414465
+            },
+            {
+              "token_id": 21173,
+              "token": "entferne",
+              "prob": 0.004076297394931316
+            }
+          ]
+        },
+        {
+          "layer": 21,
+          "top_candidates": [
+            {
+              "token_id": 20448,
+              "token": "Kontrola",
+              "prob": 0.06936571002006531
+            },
+            {
+              "token_id": 27918,
+              "token": "Хронологија",
+              "prob": 0.030982142314314842
+            },
+            {
+              "token_id": 21490,
+              "token": "Bedeut",
+              "prob": 0.021439163014292717
+            },
+            {
+              "token_id": 13406,
+              "token": "murder",
+              "prob": 0.011540467850863934
+            },
+            {
+              "token_id": 26900,
+              "token": "DR",
+              "prob": 0.010927587747573853
+            },
+            {
+              "token_id": 13167,
+              "token": "bere",
+              "prob": 0.008793597109615803
+            },
+            {
+              "token_id": 30739,
+              "token": "～",
+              "prob": 0.00785102043300867
+            },
+            {
+              "token_id": 19838,
+              "token": "Unterscheidung",
+              "prob": 0.007702256552875042
+            },
+            {
+              "token_id": 21169,
+              "token": "prüfe",
+              "prob": 0.007219598162919283
+            },
+            {
+              "token_id": 14365,
+              "token": "________",
+              "prob": 0.00658983550965786
+            }
+          ]
+        },
+        {
+          "layer": 24,
+          "top_candidates": [
+            {
+              "token_id": 26179,
+              "token": "dru",
+              "prob": 0.5655710697174072
+            },
+            {
+              "token_id": 16597,
+              "token": "Dru",
+              "prob": 0.3326558470726013
+            },
+            {
+              "token_id": 5883,
+              "token": "dru",
+              "prob": 0.06057189404964447
+            },
+            {
+              "token_id": 15721,
+              "token": "drug",
+              "prob": 0.03978960961103439
+            },
+            {
+              "token_id": 13406,
+              "token": "murder",
+              "prob": 0.00039020823896862566
+            },
+            {
+              "token_id": 26900,
+              "token": "DR",
+              "prob": 0.0002926010638475418
+            },
+            {
+              "token_id": 8353,
+              "token": "DR",
+              "prob": 0.00015459011774510145
+            },
+            {
+              "token_id": 7487,
+              "token": "Mur",
+              "prob": 5.682444680132903e-05
+            },
+            {
+              "token_id": 11124,
+              "token": "rug",
+              "prob": 4.4125670683570206e-05
+            },
+            {
+              "token_id": 7167,
+              "token": "mur",
+              "prob": 2.5827604986261576e-05
+            }
+          ]
+        },
+        {
+          "layer": 29,
+          "top_candidates": [
+            {
+              "token_id": 26179,
+              "token": "dru",
+              "prob": 0.6670068502426147
+            },
+            {
+              "token_id": 5883,
+              "token": "dru",
+              "prob": 0.20427575707435608
+            },
+            {
+              "token_id": 16597,
+              "token": "Dru",
+              "prob": 0.09397800266742706
+            },
+            {
+              "token_id": 26900,
+              "token": "DR",
+              "prob": 0.020964447408914566
+            },
+            {
+              "token_id": 8353,
+              "token": "DR",
+              "prob": 0.009304975159466267
+            },
+            {
+              "token_id": 15721,
+              "token": "drug",
+              "prob": 0.0004529602883849293
+            },
+            {
+              "token_id": 13406,
+              "token": "murder",
+              "prob": 0.0003019928408320993
+            },
+            {
+              "token_id": 29928,
+              "token": "D",
+              "prob": 0.00027298054192215204
+            },
+            {
+              "token_id": 14870,
+              "token": "facing",
+              "prob": 0.00011862366227433085
+            },
+            {
+              "token_id": 7167,
+              "token": "mur",
+              "prob": 9.379555558552966e-05
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

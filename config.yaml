@@ -6,7 +6,7 @@ default_config: llama-2-7b
 
 # GPU config
 gpu_config:
-  cuda_visible_devices: "3"
+  cuda_visible_devices: "6"
 
 # model config list
 # Add new models here
@@ -24,7 +24,7 @@ models:
     prompt_method: prompteol
     attention_enhance:
       enabled: true
-      enable_attention_override: false
+      enable_attention_override: true
       head_order: score
       override_mode: scale_max
       score_file: "./head_score/llama-2-7b-80k.json"
@@ -35,6 +35,9 @@ models:
       analysis_dir: "attention_analysis"
       analysis_tasks:
         enable_heatmap_csv: true
+        enable_prev_token_probe: true
+      ablation_tasks:
+        zero_means_attention_to_text: false
 
   llama-2-7b-attention:
     model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
@@ -57,10 +60,13 @@ models:
       top_k: 25
       gamma: 20
       target_phrase: "means in one word:\""
-      analysis_samples: 1
+      analysis_samples: 3
       analysis_dir: "attention_analysis"
       analysis_tasks:
-        enable_heatmap_csv: false
+        enable_heatmap_csv: true
+        enable_prev_token_probe: true
+      ablation_tasks:
+        zero_means_attention_to_text: false
 
   llama-2-7b-tp-attention:
     model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
@@ -85,6 +91,9 @@ models:
       analysis_dir: "attention_analysis"
       analysis_tasks:
         enable_heatmap_csv: true
+        enable_prev_token_probe: true
+      ablation_tasks:
+        zero_means_attention_to_text: true
 
   # Llama-2-7b TP mode
   llama-2-7b-tp:

@@ -9,9 +9,10 @@ import fcntl
 import time
 import argparse
 import csv
+import json
 from collections import defaultdict, OrderedDict
 from collections.abc import Mapping
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 import matplotlib.pyplot as plt
 from prettytable import PrettyTable
@@ -95,6 +96,11 @@ CSV_TASK_COLUMNS = [
     "Transfer Avg.",
 ]
 CSV_ALL_COLUMNS = CSV_BASE_COLUMNS + CSV_TASK_COLUMNS
+
+DEFAULT_PREV_TOKEN_PROBE_TEXTS: List[str] = []
+DEFAULT_PREV_TOKEN_PROBE_TEXT = DEFAULT_PREV_TOKEN_PROBE_TEXTS[0] if DEFAULT_PREV_TOKEN_PROBE_TEXTS else ""
+DEFAULT_PREV_TOKEN_PROBE_POSITIONS = [-5, -1]
+DEFAULT_PREV_TOKEN_PROBE_TOP_K = 10
 
 
 def append_results_to_csv(base_info: Dict[str, str], task_scores: Dict[str, str], csv_path: str = RESULT_CSV_PATH) -> None:
@@ -248,6 +254,7 @@ def build_configuration_summary(args) -> str:
             make_line("Analysis Samples", attn_cfg.get("analysis_samples")),
             make_line("Analysis Dir", attn_cfg.get("analysis_dir")),
             make_line("Analysis Tasks", attn_cfg.get("analysis_tasks")),
+            make_line("Ablation Tasks", attn_cfg.get("ablation_tasks")),
             make_line("Zero Skip Threshold", attn_cfg.get("zero_special_skip_threshold")),
             make_line("Zero Target Threshold", attn_cfg.get("zero_special_target_threshold")),
         ])
@@ -282,7 +289,7 @@ def main():
     parser.add_argument("--use_which_plan", type=str,
                         choices=['tp', 'vanilla'],
                         default='tp')
-    parser.add_argument("--output_layer", type=int, 
+    parser.add_argument("--output_layer", type=int,
                         default=-1)
     parser.add_argument("--tp_starting_index", type=int, 
                         default=1)
@@ -454,6 +461,99 @@ def main():
             args.attention_enhance.get("mode", "scale_max"),
         )
         override_mode = str(override_mode_raw or "").strip().lower()
+        analysis_tasks_cfg = args.attention_enhance.get("analysis_tasks")
+        if isinstance(analysis_tasks_cfg, Mapping):
+            analysis_tasks_cfg = dict(analysis_tasks_cfg)
+            args.attention_enhance["analysis_tasks"] = analysis_tasks_cfg
+            prev_probe_enabled = bool(analysis_tasks_cfg.get("enable_prev_token_probe", False))
+            if prev_probe_enabled:
+                top_k_value = analysis_tasks_cfg.get("prev_token_top_k", DEFAULT_PREV_TOKEN_PROBE_TOP_K)
+                try:
+                    analysis_tasks_cfg["prev_token_top_k"] = int(top_k_value)
+                except (TypeError, ValueError):
+                    logging.warning(
+                        "[prev_token_probe] prev_token_top_k=%r 无法解析，使用默认值 %s。",
+                        top_k_value,
+                        DEFAULT_PREV_TOKEN_PROBE_TOP_K,
+                    )
+                    analysis_tasks_cfg["prev_token_top_k"] = DEFAULT_PREV_TOKEN_PROBE_TOP_K
+                text_candidates: List[str] = []
+                single_text_value = analysis_tasks_cfg.get("prev_token_probe_text")
+                multi_text_value = analysis_tasks_cfg.get("prev_token_probe_texts")
+                if isinstance(single_text_value, str):
+                    text_candidates.append(single_text_value)
+                elif isinstance(single_text_value, (list, tuple)):
+                    for item in single_text_value:
+                        if isinstance(item, str):
+                            text_candidates.append(item)
+                if isinstance(multi_text_value, str):
+                    text_candidates.append(multi_text_value)
+                elif isinstance(multi_text_value, (list, tuple)):
+                    for item in multi_text_value:
+                        if isinstance(item, str):
+                            text_candidates.append(item)
+                seen_texts = set()
+                dedup_texts: List[str] = []
+                for text in text_candidates:
+                    cleaned = text.strip()
+                    if cleaned and cleaned not in seen_texts:
+                        seen_texts.add(cleaned)
+                        dedup_texts.append(cleaned)
+                if dedup_texts:
+                    analysis_tasks_cfg["prev_token_probe_texts"] = dedup_texts
+                    analysis_tasks_cfg["prev_token_probe_text"] = dedup_texts[0]
+                    probe_matcher = TokenSequenceMatcher.from_phrases(
+                        dedup_texts,
+                        tokenizer,
+                        include_leading_space_variant=True,
+                    )
+                    if probe_matcher.is_empty():
+                        logging.warning(
+                            "[prev_token_probe] probe_texts=%r 无法转换为有效的 token 序列，将仅使用位置探针。",
+                            dedup_texts,
+                        )
+                        analysis_tasks_cfg.pop("prev_token_probe_token_ids", None)
+                    else:
+                        analysis_tasks_cfg["prev_token_probe_token_ids"] = probe_matcher.sequences
+                        logging.info(
+                            "[prev_token_probe] probe_texts=%r -> token_ids=%s",
+                            dedup_texts,
+                            probe_matcher.sequences,
+                        )
+                else:
+                    analysis_tasks_cfg.pop("prev_token_probe_texts", None)
+                    analysis_tasks_cfg.pop("prev_token_probe_text", None)
+                    analysis_tasks_cfg.pop("prev_token_probe_token_ids", None)
+                positions_value = analysis_tasks_cfg.get("prev_token_probe_positions", DEFAULT_PREV_TOKEN_PROBE_POSITIONS)
+                position_candidates: List[int] = []
+                if isinstance(positions_value, (list, tuple)):
+                    for item in positions_value:
+                        try:
+                            position_candidates.append(int(item))
+                        except (TypeError, ValueError):
+                            logging.warning("[prev_token_probe] 非法位置值 %r 已忽略。", item)
+                elif positions_value is not None:
+                    try:
+                        position_candidates.append(int(positions_value))
+                    except (TypeError, ValueError):
+                        logging.warning("[prev_token_probe] prev_token_probe_positions=%r 无法解析，使用默认值。", positions_value)
+                if not position_candidates:
+                    position_candidates = list(DEFAULT_PREV_TOKEN_PROBE_POSITIONS)
+                seen_positions = set()
+                normalized_positions: List[int] = []
+                for pos in position_candidates:
+                    if pos in seen_positions:
+                        continue
+                    seen_positions.add(pos)
+                    normalized_positions.append(pos)
+                analysis_tasks_cfg["prev_token_probe_positions"] = normalized_positions
+        ablation_tasks_cfg = args.attention_enhance.get("ablation_tasks")
+        if isinstance(ablation_tasks_cfg, Mapping):
+            ablation_tasks_cfg = dict(ablation_tasks_cfg)
+            args.attention_enhance["ablation_tasks"] = ablation_tasks_cfg
+            zero_flag = ablation_tasks_cfg.get("zero_means_attention_to_text")
+            if zero_flag is not None:
+                ablation_tasks_cfg["zero_means_attention_to_text"] = bool(zero_flag)
         if override_mode not in {"scale_max", "zero_special"}:
             logging.warning(
                 "[attention_enhance] override_mode=%r 不受支持，将回退为 scale_max。",
@@ -644,13 +744,17 @@ def main():
             analysis_tasks_config: Dict[str, object] = {}
             run_heatmap_csv_analysis = True
             heatmap_csv_base_dir = None
+            probe_output_base_dir = None
+            prev_token_probe_enabled = False
+            prompt_slug = None
             if args.attention_enhance:
                 raw_tasks_cfg = args.attention_enhance.get("analysis_tasks") or {}
                 if isinstance(raw_tasks_cfg, Mapping):
                     analysis_tasks_config = dict(raw_tasks_cfg)
                 run_heatmap_csv_analysis = bool(analysis_tasks_config.get("enable_heatmap_csv", True))
+                prev_token_probe_enabled = bool(analysis_tasks_config.get("enable_prev_token_probe", False))
                 base_analysis_dir = args.attention_enhance.get("analysis_dir")
-                if base_analysis_dir and run_heatmap_csv_analysis:
+                if base_analysis_dir:
                     prompt_method_value = getattr(args, "prompt_method", None)
                     prompt_slug_chars: List[str] = []
                     if isinstance(prompt_method_value, str):
@@ -660,8 +764,12 @@ def main():
                             elif ch in {" ", "-", "_"}:
                                 prompt_slug_chars.append("_")
                     prompt_slug = ''.join(prompt_slug_chars).strip('_') or "prompt"
-                    heatmap_csv_base_dir = os.path.join(base_analysis_dir, prompt_slug, "heatmap_csv_analysis")
-                    os.makedirs(heatmap_csv_base_dir, exist_ok=True)
+                    if run_heatmap_csv_analysis:
+                        heatmap_csv_base_dir = os.path.join(base_analysis_dir, prompt_slug, "heatmap_csv_analysis")
+                        os.makedirs(heatmap_csv_base_dir, exist_ok=True)
+                    if prev_token_probe_enabled:
+                        probe_output_base_dir = os.path.join(base_analysis_dir, prompt_slug, "prev_token_probe")
+                        os.makedirs(probe_output_base_dir, exist_ok=True)
             if analysis_records:
                 special_token_ids = set(tokenizer.all_special_ids or [])
                 for attr in ["pad_token_id", "bos_token_id", "eos_token_id", "unk_token_id"]:
@@ -685,15 +793,25 @@ def main():
                     records_by_sample[sample_idx].append(record)
     
                 for sample_idx in sorted(records_by_sample.keys()):
-                    sample_records = sorted(records_by_sample[sample_idx], key=lambda r: r.get("layer", 0))
-                    if not sample_records:
+                    all_records = sorted(records_by_sample[sample_idx], key=lambda r: r.get("layer", 0))
+                    if not all_records:
                         continue
                     if analysis_visual_limit > 0:
-                        should_visualize = any(record.get("visualize", False) for record in sample_records)
+                        should_visualize = any(record.get("visualize", False) for record in all_records)
                     else:
                         should_visualize = True
-                    reference = sample_records[0]
-                    token_ids = reference.get("token_ids", [])
+                    attn_records: List[Dict] = []
+                    probe_records: List[Dict] = []
+                    for record in all_records:
+                        task_type = record.get("task_type")
+                        if task_type == "prev_token_probe":
+                            probe_records.append(record)
+                        else:
+                            attn_records.append(record)
+                    reference_record = attn_records[0] if attn_records else (probe_records[0] if probe_records else None)
+                    if reference_record is None:
+                        continue
+                    token_ids = reference_record.get("token_ids", []) or []
                     sample_text = tokenizer.decode(token_ids, clean_up_tokenization_spaces=False)
                     sample_text = sample_text.replace("\n", "\\n")
                     if should_visualize:
@@ -702,6 +820,151 @@ def main():
                             sample_idx,
                             sample_text,
                         )
+                    if prev_token_probe_enabled and should_visualize and token_ids:
+                        token_debug_strings: List[str] = []
+                        for idx, token_id in enumerate(token_ids):
+                            token_text = decode_token(token_id)
+                            if not token_text:
+                                token_text = tokenizer.convert_ids_to_tokens(token_id) or ""
+                            token_text = token_text.replace("\n", "\\n")
+                            token_debug_strings.append(f"{idx}:{token_text or '<special>'}({token_id})")
+                        logging.info(
+                            "[prev_token_probe][sample %s] tokenization=%s",
+                            sample_idx,
+                            token_debug_strings,
+                        )
+                    probe_export_payload = None
+                    if probe_records and should_visualize:
+                        probe_log_buffer: List[str] = []
+                        aggregated_tokens: Dict[int, Dict[str, object]] = {}
+                        aggregated_probe_texts: List[str] = []
+                        aggregated_probe_positions: List[int] = []
+                        for probe_record in probe_records:
+                            layer_val = int(probe_record.get("layer", -1))
+                            probe_results = probe_record.get("probe_results", []) or []
+                            probe_texts = probe_record.get("probe_texts") or []
+                            probe_positions = probe_record.get("probe_positions") or []
+                            for text in probe_texts:
+                                if text and text not in aggregated_probe_texts:
+                                    aggregated_probe_texts.append(text)
+                            for pos in probe_positions:
+                                try:
+                                    pos_val = int(pos)
+                                except (TypeError, ValueError):
+                                    continue
+                                if pos_val not in aggregated_probe_positions:
+                                    aggregated_probe_positions.append(pos_val)
+                            if probe_texts or probe_positions:
+                                probe_log_buffer.append(
+                                    f"[prev_token_probe][sample {sample_idx}][layer {layer_val}] probe_texts={probe_texts} positions={probe_positions}"
+                                )
+                            if not probe_results:
+                                continue
+                            for result in probe_results:
+                                token_index = int(result.get("token_index", -1))
+                                if 0 <= token_index < len(token_ids):
+                                    token_repr = decode_token(token_ids[token_index])
+                                    if not token_repr:
+                                        token_repr = f"T@{token_index}"
+                                else:
+                                    token_repr = f"T@{token_index}"
+                                top_ids = result.get("top_k_ids", []) or []
+                                top_probs = result.get("top_k_probs", []) or []
+                                top_entries = []
+                                top_candidate_entries = []
+                                for tok_id, prob in zip(top_ids, top_probs):
+                                    decoded_candidate = decode_token(int(tok_id))
+                                    if not decoded_candidate:
+                                        decoded_candidate = f"<{tok_id}>"
+                                    top_entries.append(f"{decoded_candidate}:{prob:.4f}")
+                                    top_candidate_entries.append(
+                                        {
+                                            "token_id": int(tok_id),
+                                            "token": decoded_candidate,
+                                            "prob": float(prob),
+                                        }
+                                    )
+                                probe_log_buffer.append(
+                                    f"    token_idx={token_index} token={token_repr!r} -> {top_entries}"
+                                )
+                                token_id_value = result.get("token_id")
+                                token_entry = aggregated_tokens.setdefault(
+                                    token_index,
+                                    {
+                                        "token_index": token_index,
+                                        "token_id": int(token_id_value)
+                                        if token_id_value is not None
+                                        else (
+                                            int(token_ids[token_index])
+                                            if 0 <= token_index < len(token_ids)
+                                            else None
+                                        ),
+                                        "token": token_repr,
+                                        "layers": [],
+                                    },
+                                )
+                                token_entry["layers"].append(
+                                    {
+                                        "layer": layer_val,
+                                        "top_candidates": top_candidate_entries,
+                                    }
+                                )
+                        for line in probe_log_buffer:
+                            logging.info(line)
+                        if probe_output_base_dir and aggregated_tokens:
+                            if not aggregated_probe_texts:
+                                cfg_texts = analysis_tasks_config.get("prev_token_probe_texts")
+                                cfg_text = analysis_tasks_config.get("prev_token_probe_text")
+                                if isinstance(cfg_texts, list):
+                                    aggregated_probe_texts = [str(t) for t in cfg_texts]
+                                elif isinstance(cfg_text, str):
+                                    aggregated_probe_texts = [cfg_text]
+                            if not aggregated_probe_positions:
+                                cfg_positions = analysis_tasks_config.get("prev_token_probe_positions", [])
+                                position_list: List[int] = []
+                                seen_cfg_pos: Set[int] = set()
+                                if isinstance(cfg_positions, (list, tuple)):
+                                    iterable = cfg_positions
+                                else:
+                                    iterable = [cfg_positions]
+                                for item in iterable:
+                                    try:
+                                        pos_val = int(item)
+                                    except (TypeError, ValueError):
+                                        continue
+                                    if pos_val in seen_cfg_pos:
+                                        continue
+                                    seen_cfg_pos.add(pos_val)
+                                    position_list.append(pos_val)
+                                aggregated_probe_positions = position_list
+                            for token_entry in aggregated_tokens.values():
+                                token_entry["layers"].sort(key=lambda item: item["layer"])
+                            export_tokens = [
+                                aggregated_tokens[idx] for idx in sorted(aggregated_tokens.keys())
+                            ]
+                            probe_export_payload = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "sample_index": int(sample_idx),
+                                "prompt": sample_text,
+                                "input_text": reference_record.get("input_text") or "",
+                                "probe_texts": aggregated_probe_texts,
+                                "probe_positions": aggregated_probe_positions,
+                                "tokens": export_tokens,
+                            }
+                            sample_probe_path = os.path.join(
+                                probe_output_base_dir, f"sample_{sample_idx}.json"
+                            )
+                            with open(sample_probe_path, "w", encoding="utf-8") as fp:
+                                json.dump(probe_export_payload, fp, ensure_ascii=False, indent=2)
+                    if not attn_records:
+                        if probe_records and should_visualize:
+                            logging.info(
+                                "[attention_analysis][sample %s] 未找到注意力记录（仅执行 prev_token_probe）。",
+                                sample_idx,
+                            )
+                        continue
+                    sample_records = attn_records
+                    reference = sample_records[0]
                     query_positions = reference.get("query_positions", [])
                     query_tokens = [
                         decode_token(token_ids[pos]) if pos < len(token_ids) else f"<idx {pos}>"
