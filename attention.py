@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import numpy as np
+import random
 
 
 DEFAULT_SCORE_FILE = Path("./head_score/llama-2-7b-80k.json")
@@ -59,8 +60,18 @@ def get_top_attention_head_positions(
         (tuple(int(index) for index in key.split("-")), float(np.mean(scores)))
         for key, scores in head_scores.items()
     ]
+    # 按评分降序选择 top k
     averaged_scores.sort(key=lambda item: item[1], reverse=True)
     result = averaged_scores[:k]
+
+    # # 按评分升序选择 top k
+    # averaged_scores.sort(key=lambda item: item[1], reverse=False)
+    # result = averaged_scores[:k]
+
+    # 随机选择
+    # random.seed(42)
+    # result = random.sample(averaged_scores, k)
+
     return [position for position, _ in result]
     # return result
 

@@ -63,8 +63,6 @@ enhance_cfg["gamma"] = 20
 enhance_cfg["target_phrase"] = 'means in one word:"'
 enhance_cfg["analysis_samples"] = 1
 enhance_cfg["analysis_dir"] = "attention_analysis"
-enhance_cfg["average_last_token_attention"] = False
-enhance_cfg["average_last_token_start_layer"] = 29
 
 config.setdefault("gpu_config", {})["cuda_visible_devices"] = str(gpu)
 config["default_config"] = model_key
