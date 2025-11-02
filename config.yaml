@@ -6,7 +6,7 @@ default_config: llama-2-7b
 
 # GPU config
 gpu_config:
-  cuda_visible_devices: "6"
+  cuda_visible_devices: "7"
 
 # model config list
 # Add new models here
@@ -24,9 +24,9 @@ models:
     prompt_method: prompteol
     attention_enhance:
       enabled: true
-      enable_attention_override: true
+      enable_attention_override: false
       head_order: score
-      override_mode: scale_max
+      override_mode: zero_special
       score_file: "./head_score/llama-2-7b-80k.json"
       top_k: 25
       gamma: 1.2
@@ -34,10 +34,10 @@ models:
       analysis_samples: 3
       analysis_dir: "attention_analysis"
       analysis_tasks:
-        enable_heatmap_csv: true
-        enable_prev_token_probe: true
+        enable_heatmap_csv: false
+        enable_prev_token_probe: false
       ablation_tasks:
-        zero_means_attention_to_text: false
+        zero_means_attention_to_text: true
 
   llama-2-7b-attention:
     model_name_or_path: "/mnt/public/models/Llama-2-7b-hf"
@@ -47,7 +47,7 @@ models:
     tp_exiting_index: 0   # not used in vanilla mode
     batch_size: 16
     mode: test
-    task_set: sts
+    task_set: full
     prompt_method: prompteol
     attention_enhance:
       enabled: true
@@ -57,14 +57,14 @@ models:
       zero_special_skip_threshold: 0.20
       zero_special_target_threshold: 0.99
       score_file: "./head_score/llama-2-7b-80k.json"
-      top_k: 25
+      top_k: 30
       gamma: 20
       target_phrase: "means in one word:\""
       analysis_samples: 3
       analysis_dir: "attention_analysis"
       analysis_tasks:
-        enable_heatmap_csv: true
-        enable_prev_token_probe: true
+        enable_heatmap_csv: false
+        enable_prev_token_probe: false
       ablation_tasks:
         zero_means_attention_to_text: false
 

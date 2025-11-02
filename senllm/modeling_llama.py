@@ -440,63 +440,51 @@ class LlamaAttention(nn.Module):
         if not self._ablation_zero_means_attention_to_text:
             return attn_weights
         if attn_weights.ndim != 4:
-            return attn_weights
+            raise RuntimeError(
+                f"[ablation_zero_means] 注意力张量维度异常，期望4维，实际为 {attn_weights.ndim}。"
+            )
         if not self._ablation_zero_means_invoked_logged:
             logger.warning("[ablation_zero_means] 进入消融流程，准备处理 means→text 注意力。")
             self._ablation_zero_means_invoked_logged = True
-        if not head_indices:
-            if not self._ablation_zero_means_no_heads_logged:
-                logger.warning(
-                    "[ablation_zero_means] 当前层未配置关键头，跳过 means→text 消融。"
-                )
-                self._ablation_zero_means_no_heads_logged = True
-            return attn_weights
         if not has_text_mask:
-            if not self._ablation_zero_means_no_mask_logged:
-                logger.warning(
-                    "[ablation_zero_means] 未获取输入文本 token 掩码，跳过 means→text 消融。"
-                )
-                self._ablation_zero_means_no_mask_logged = True
-            return attn_weights
+            raise RuntimeError(
+                "[ablation_zero_means] 未获取输入文本 token 掩码，无法执行 means→text 消融。"
+            )
 
         batch_size, num_heads, query_len, key_len = attn_weights.shape
         if query_len == 0 or key_len == 0:
-            return attn_weights
+            raise RuntimeError("[ablation_zero_means] 注意力序列长度为0，无法执行消融。")
 
         means_index = key_len - 5
         if means_index < 0 or means_index >= key_len or means_index >= query_len:
-            return attn_weights
+            raise RuntimeError(
+                f"[ablation_zero_means] means token 索引 {means_index} 超出范围，无法执行消融。"
+            )
 
         if non_special_mask is None:
-            if not self._ablation_zero_means_mask_issue_logged:
-                logger.warning(
-                    "[ablation_zero_means] 未能传入文本掩码张量，跳过 means→text 消融。"
-                )
-                self._ablation_zero_means_mask_issue_logged = True
-            return attn_weights
+            raise RuntimeError(
+                "[ablation_zero_means] 未能传入文本掩码张量，无法执行 means→text 消融。"
+            )
         text_mask = non_special_mask
         if text_mask.device != attn_weights.device:
             text_mask = text_mask.to(attn_weights.device)
         if text_mask.dtype != torch.bool:
             text_mask = text_mask.to(torch.bool)
         if text_mask.shape[0] != batch_size or text_mask.shape[1] != key_len:
-            if not self._ablation_zero_means_mask_issue_logged:
-                logger.warning(
-                    "[ablation_zero_means] 文本掩码尺寸=%s 与注意力尺寸(B=%d, L=%d)不匹配，跳过消融。",
-                    tuple(text_mask.shape),
-                    batch_size,
-                    key_len,
-                )
-                self._ablation_zero_means_mask_issue_logged = True
-            return attn_weights
+            raise RuntimeError(
+                f"[ablation_zero_means] 文本掩码尺寸={tuple(text_mask.shape)} 与注意力尺寸(B={batch_size}, L={key_len})不匹配。"
+            )
 
         mask = text_mask.clone()
         mask[:, means_index] = False
         text_mask_f = text_mask.to(attn_weights.dtype)
 
-        head_list = sorted({int(h) for h in head_indices if 0 <= int(h) < num_heads})
-        if not head_list:
-            return attn_weights
+        if head_indices is None:
+            head_list = list(range(num_heads))
+        else:
+            head_list = sorted({int(h) for h in head_indices if 0 <= int(h) < num_heads})
+            if not head_list:
+                head_list = list(range(num_heads))
 
         updated_weights = attn_weights
         eps = 1e-12
@@ -1081,6 +1069,11 @@ class LlamaModel(LlamaPreTrainedModel):
         else:
             self._ablation_config = {}
         ablation_enabled = bool(self._ablation_zero_means_attention_to_text)
+        enhance_enabled = bool(enhance_config and enhance_config.get("enabled", False))
+        if ablation_enabled and not enhance_enabled:
+            raise RuntimeError(
+                "[ablation_zero_means] 启用了 zero_means_attention_to_text，但 attention_enhance.enabled 未开启。"
+            )
         for layer in self.layers:
             attn_module = getattr(layer, "self_attn", None)
             if attn_module is None:
@@ -1635,11 +1628,15 @@ class LlamaModel(LlamaPreTrainedModel):
 
         self._attention_enhance_has_text_mask = False
         attention_enhance_non_special_mask: Optional[torch.Tensor] = None
-        if (
+        should_build_text_mask = (
             input_ids is not None
-            and self._attention_enhance_heads_by_layer
             and self.attention_enhance_config.get("enabled", False)
-        ):
+            and (
+                self._attention_enhance_heads_by_layer
+                or self._ablation_zero_means_attention_to_text
+            )
+        )
+        if should_build_text_mask:
             device = input_ids.device
             text_token_mask: Optional[torch.Tensor] = None
             if self._attention_enhance_mode in {"zero_special", "scale_max"}:
@@ -1761,8 +1758,8 @@ class LlamaModel(LlamaPreTrainedModel):
 
             head_indices = self._attention_enhance_heads_by_layer.get(index)
             # 跳过前 15 层的注意力头改写
-            # if index < 15:
-            #     break
+            # if index in {19,20,21}:
+            #     head_indices = None
             attention_enhance_heads: Optional[Sequence[int]] = list(head_indices) if head_indices else None
             if (
                 attention_enhance_heads
